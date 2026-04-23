@@ -1,0 +1,426 @@
+import { app } from "../../scripts/app.js";
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+const state = {
+  selectedIds: [],
+  activeTab: "recommended",
+  nextUrls: {},
+  loading: false,
+  activeArtistId: null,
+  artistNextUrl: null,
+};
+
+// ── CSS injection ─────────────────────────────────────────────────────────────
+
+function injectCSS() {
+  if (document.getElementById("pixiv-dialog-css")) return;
+  const link = document.createElement("link");
+  link.id = "pixiv-dialog-css";
+  link.rel = "stylesheet";
+  link.href = new URL("pixiv_dialog.css", import.meta.url).href;
+  document.head.appendChild(link);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function updateSelectedCount() {
+  const el = document.getElementById("pixiv-selected-count");
+  if (el) el.textContent = `已选 ${state.selectedIds.length} 张`;
+}
+
+// ── Modal DOM ─────────────────────────────────────────────────────────────────
+
+function buildModal() {
+  const overlay = document.createElement("div");
+  overlay.id = "pixiv-modal-overlay";
+  overlay.innerHTML = `
+    <div id="pixiv-modal">
+      <div id="pixiv-modal-header">
+        <h2>📷 Pixiv Browser</h2>
+        <span id="pixiv-selected-count">已选 0 张</span>
+        <button id="pixiv-close-btn" title="关闭">✕</button>
+      </div>
+      <div id="pixiv-tabs">
+        <button class="pixiv-tab active" data-tab="recommended">推荐</button>
+        <button class="pixiv-tab" data-tab="ranking">排行榜</button>
+        <button class="pixiv-tab" data-tab="bookmarks">收藏</button>
+        <button class="pixiv-tab" data-tab="artists">画师</button>
+      </div>
+      <div id="pixiv-content"></div>
+      <div id="pixiv-modal-footer">
+        <button id="pixiv-cancel-btn">取消</button>
+        <button id="pixiv-confirm-btn">✓ 确认选择</button>
+      </div>
+    </div>
+  `;
+  return overlay;
+}
+
+function closeModal() {
+  document.getElementById("pixiv-modal-overlay")?.remove();
+}
+
+// ── Open modal ────────────────────────────────────────────────────────────────
+
+async function openModal(node, idsWidget) {
+  injectCSS();
+
+  // Restore previously selected ids from widget
+  Object.assign(state, {
+    selectedIds: idsWidget?.value
+      ? idsWidget.value.split(",").map(s => s.trim()).filter(Boolean)
+      : [],
+    activeTab: "recommended",
+    nextUrls: {},
+    loading: false,
+    activeArtistId: null,
+    artistNextUrl: null,
+  });
+
+  const overlay = buildModal();
+  document.body.appendChild(overlay);
+  updateSelectedCount();
+
+  const contentEl = document.getElementById("pixiv-content");
+
+  // Header buttons
+  document.getElementById("pixiv-close-btn").addEventListener("click", closeModal);
+  document.getElementById("pixiv-cancel-btn").addEventListener("click", closeModal);
+  document.getElementById("pixiv-confirm-btn").addEventListener("click", () => {
+    if (idsWidget) idsWidget.value = state.selectedIds.join(",");
+    closeModal();
+  });
+
+  // Tab buttons
+  document.querySelectorAll(".pixiv-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab, contentEl));
+  });
+
+  // Close on overlay click
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+
+  // Check login status
+  try {
+    const resp = await fetch("/pixiv/status");
+    const status = await resp.json();
+    if (!status.logged_in) {
+      renderLoginPage(contentEl);
+    } else {
+      openMainBrowser(contentEl);
+    }
+  } catch (e) {
+    contentEl.innerHTML = `<div class="pixiv-error">无法连接到 ComfyUI 后端: ${e.message}</div>`;
+  }
+}
+
+// ── Login page ────────────────────────────────────────────────────────────────
+
+function renderLoginPage(contentEl) {
+  contentEl.innerHTML = `
+    <div id="pixiv-login-page">
+      <h3 style="color:#cba6f7;margin:0">登录 Pixiv</h3>
+      <p>点击下方按钮，在浏览器中完成 Pixiv 授权。<br>
+         授权后浏览器会跳转到以 <code>pixiv://</code> 开头的地址（可能显示错误页面），<br>
+         请将该地址完整复制后粘贴到下方输入框中。</p>
+      <button id="pixiv-login-btn">用浏览器登录 Pixiv</button>
+      <div id="pixiv-callback-section" style="display:none;width:100%;max-width:500px;display:flex;flex-direction:column;gap:8px;align-items:center">
+        <input id="pixiv-redirect-input" type="text" placeholder="粘贴 pixiv://account/login?code=... 到此处" />
+        <button id="pixiv-submit-code-btn">确认登录</button>
+        <p id="pixiv-login-error" style="color:#f38ba8;display:none;margin:0"></p>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("pixiv-login-btn").addEventListener("click", async () => {
+    try {
+      const resp = await fetch("/pixiv/auth/login", { method: "POST" });
+      const data = await resp.json();
+      window.open(data.auth_url, "_blank");
+      document.getElementById("pixiv-callback-section").style.display = "flex";
+    } catch (e) {
+      console.error("[PixivBrowser] Login init failed:", e);
+    }
+  });
+
+  document.getElementById("pixiv-submit-code-btn").addEventListener("click", async () => {
+    const redirectUrl = document.getElementById("pixiv-redirect-input").value.trim();
+    const errEl = document.getElementById("pixiv-login-error");
+    if (!redirectUrl) return;
+    errEl.style.display = "none";
+    try {
+      const resp = await fetch("/pixiv/auth/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirect_url: redirectUrl }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        openMainBrowser(contentEl);
+      } else {
+        errEl.textContent = data.error || "登录失败，请重试";
+        errEl.style.display = "block";
+      }
+    } catch (e) {
+      errEl.textContent = "网络错误：" + e.message;
+      errEl.style.display = "block";
+    }
+  });
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+
+function switchTab(tabName, contentEl) {
+  state.activeTab = tabName;
+  document.querySelectorAll(".pixiv-tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tab === tabName);
+  });
+  openMainBrowser(contentEl);
+}
+
+async function openMainBrowser(contentEl) {
+  if (state.activeTab === "artists") {
+    renderArtistPane(contentEl);
+    return;
+  }
+  contentEl.innerHTML = `
+    <div id="pixiv-grid-pane">
+      <div class="pixiv-grid" id="pixiv-image-grid"></div>
+      <div class="pixiv-loading" id="pixiv-load-more" style="display:none">加载中...</div>
+      <div id="pixiv-scroll-sentinel"></div>
+    </div>
+  `;
+  const tab = state.activeTab;
+  state.nextUrls[tab] = undefined;
+  await loadMoreImages(tab);
+  setupInfiniteScroll(tab);
+}
+
+// ── Image grid ────────────────────────────────────────────────────────────────
+
+async function fetchImages(tab, nextUrl) {
+  const params = nextUrl ? `?next_url=${encodeURIComponent(nextUrl)}` : "";
+  const urlMap = {
+    recommended: `/pixiv/recommended${params}`,
+    ranking:     `/pixiv/ranking${params}`,
+    bookmarks:   `/pixiv/bookmarks${params}`,
+  };
+  const resp = await fetch(urlMap[tab]);
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+async function loadMoreImages(tab) {
+  if (state.loading) return;
+  const nextUrl = state.nextUrls[tab];
+  if (nextUrl === null) return;
+
+  state.loading = true;
+  const loadEl = document.getElementById("pixiv-load-more");
+  if (loadEl) loadEl.style.display = "flex";
+
+  try {
+    const data = await fetchImages(tab, nextUrl);
+    state.nextUrls[tab] = data.next_url ?? null;
+    appendIllusts(data.illusts, document.getElementById("pixiv-image-grid"));
+  } catch (e) {
+    document.getElementById("pixiv-image-grid")
+      ?.insertAdjacentHTML("beforeend", `<div class="pixiv-error">加载失败: ${e.message}</div>`);
+  } finally {
+    state.loading = false;
+    if (loadEl) loadEl.style.display = "none";
+  }
+}
+
+function appendIllusts(illusts, gridEl) {
+  if (!gridEl) return;
+  for (const illust of illusts) gridEl.appendChild(createCard(illust));
+}
+
+function createCard(illust) {
+  const card = document.createElement("div");
+  card.className = "pixiv-card";
+  card.dataset.id = String(illust.id);
+
+  const thumb = `/pixiv/image_proxy?url=${encodeURIComponent(illust.image_urls.medium)}`;
+  card.innerHTML = `
+    <img src="${thumb}" alt="${escapeHtml(illust.title)}" loading="lazy" />
+    <div class="pixiv-card-title">${escapeHtml(illust.title)}</div>
+  `;
+
+  const idx = state.selectedIds.indexOf(String(illust.id));
+  if (idx !== -1) {
+    card.classList.add("selected");
+    card.insertAdjacentHTML("beforeend",
+      `<div class="pixiv-seq-badge">${idx + 1}</div>`);
+  }
+
+  card.addEventListener("click", () => toggleCard(card, String(illust.id)));
+  return card;
+}
+
+function toggleCard(card, id) {
+  const idx = state.selectedIds.indexOf(id);
+  if (idx === -1) {
+    state.selectedIds.push(id);
+    card.classList.add("selected");
+    card.insertAdjacentHTML("beforeend",
+      `<div class="pixiv-seq-badge">${state.selectedIds.length}</div>`);
+  } else {
+    state.selectedIds.splice(idx, 1);
+    card.classList.remove("selected");
+    card.querySelector(".pixiv-seq-badge")?.remove();
+    rebadgeAll();
+  }
+  updateSelectedCount();
+}
+
+function rebadgeAll() {
+  document.querySelectorAll(".pixiv-card.selected").forEach(card => {
+    const badge = card.querySelector(".pixiv-seq-badge");
+    if (badge) badge.textContent = state.selectedIds.indexOf(card.dataset.id) + 1;
+  });
+}
+
+function setupInfiniteScroll(tab) {
+  const sentinel = document.getElementById("pixiv-scroll-sentinel");
+  if (!sentinel) return;
+  new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) loadMoreImages(tab);
+  }, { rootMargin: "200px" }).observe(sentinel);
+}
+
+// ── Artist tab ────────────────────────────────────────────────────────────────
+
+async function renderArtistPane(contentEl) {
+  contentEl.innerHTML = `
+    <div id="pixiv-artist-pane">
+      <div id="pixiv-artist-list"><div class="pixiv-loading">加载中...</div></div>
+      <div id="pixiv-artist-works-pane">
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#7f849c">
+          请从左侧选择一位画师
+        </div>
+      </div>
+    </div>
+  `;
+  try {
+    const resp = await fetch("/pixiv/bookmarked_artists");
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    renderArtistList(data.artists, document.getElementById("pixiv-artist-list"));
+  } catch (e) {
+    document.getElementById("pixiv-artist-list").innerHTML =
+      `<div class="pixiv-error">加载失败: ${e.message}</div>`;
+  }
+}
+
+function renderArtistList(artists, listEl) {
+  listEl.innerHTML = "";
+  for (const artist of artists) {
+    const item = document.createElement("div");
+    item.className = "pixiv-artist-item";
+    item.dataset.id = String(artist.id);
+    const avatar = `/pixiv/image_proxy?url=${encodeURIComponent(artist.profile_image_urls.medium)}`;
+    item.innerHTML = `
+      <img class="pixiv-artist-avatar" src="${avatar}" alt="" />
+      <span class="pixiv-artist-name">${escapeHtml(artist.name)}</span>
+    `;
+    item.addEventListener("click", () => {
+      document.querySelectorAll(".pixiv-artist-item").forEach(el => el.classList.remove("active"));
+      item.classList.add("active");
+      loadArtistWorks(artist.id);
+    });
+    listEl.appendChild(item);
+  }
+}
+
+async function loadArtistWorks(artistId) {
+  state.activeArtistId = artistId;
+  state.artistNextUrl = undefined;
+
+  const worksPane = document.getElementById("pixiv-artist-works-pane");
+  worksPane.innerHTML = `
+    <div class="pixiv-grid" id="pixiv-artist-grid"></div>
+    <div class="pixiv-loading" id="pixiv-artist-load-more" style="display:none">加载中...</div>
+    <div id="pixiv-artist-scroll-sentinel"></div>
+  `;
+  await loadMoreArtistWorks(artistId);
+  setupArtistInfiniteScroll(artistId);
+}
+
+async function loadMoreArtistWorks(artistId) {
+  if (state.loading) return;
+  const nextUrl = state.artistNextUrl;
+  if (nextUrl === null) return;
+
+  state.loading = true;
+  const loadEl = document.getElementById("pixiv-artist-load-more");
+  if (loadEl) loadEl.style.display = "flex";
+
+  try {
+    const params = nextUrl ? `?next_url=${encodeURIComponent(nextUrl)}` : "";
+    const resp = await fetch(`/pixiv/artist/${artistId}/works${params}`);
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    state.artistNextUrl = data.next_url ?? null;
+    appendIllusts(data.illusts, document.getElementById("pixiv-artist-grid"));
+  } catch (e) {
+    document.getElementById("pixiv-artist-grid")
+      ?.insertAdjacentHTML("beforeend", `<div class="pixiv-error">加载失败: ${e.message}</div>`);
+  } finally {
+    state.loading = false;
+    if (loadEl) loadEl.style.display = "none";
+  }
+}
+
+function setupArtistInfiniteScroll(artistId) {
+  const sentinel = document.getElementById("pixiv-artist-scroll-sentinel");
+  if (!sentinel) return;
+  new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) loadMoreArtistWorks(artistId);
+  }, { rootMargin: "200px" }).observe(sentinel);
+}
+
+// ── ComfyUI Extension Registration ───────────────────────────────────────────
+
+app.registerExtension({
+  name: "pixiv.browser",
+
+  async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name !== "PixivBrowser") return;
+
+    const onNodeCreated = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function () {
+      const result = onNodeCreated?.apply(this, arguments);
+
+      // Hide the artwork_ids text widget (still serialized, just invisible)
+      const idsWidget = this.widgets?.find(w => w.name === "artwork_ids");
+      if (idsWidget) {
+        idsWidget.computeSize = () => [0, -4];
+      }
+
+      // Add browse button
+      this.addWidget("button", "🖼 浏览 Pixiv", null, () => {
+        openModal(this, idsWidget);
+      });
+
+      return result;
+    };
+  },
+});
