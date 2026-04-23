@@ -1,0 +1,4 @@
+pixivpy3>=3.7.0
+Pillow>=9.0.0
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
