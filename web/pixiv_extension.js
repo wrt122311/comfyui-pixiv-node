@@ -127,13 +127,27 @@ function renderLoginPage(contentEl) {
   contentEl.innerHTML = `
     <div id="pixiv-login-page">
       <h3 style="color:#cba6f7;margin:0">登录 Pixiv</h3>
-      <p>点击下方按钮，在浏览器中完成 Pixiv 授权。<br>
-         授权后浏览器会跳转到以 <code>pixiv://</code> 开头的地址（可能显示错误页面），<br>
-         请将该地址完整复制后粘贴到下方输入框中。</p>
-      <button id="pixiv-login-btn">用浏览器登录 Pixiv</button>
-      <div id="pixiv-callback-section" style="display:none;width:100%;max-width:500px;display:flex;flex-direction:column;gap:8px;align-items:center">
-        <input id="pixiv-redirect-input" type="text" placeholder="粘贴 pixiv://account/login?code=... 到此处" />
-        <button id="pixiv-submit-code-btn">确认登录</button>
+
+      <div style="background:#181825;border:1px solid #3a3a5c;border-radius:6px;padding:14px 18px;max-width:480px;line-height:1.8;font-size:13px">
+        <b style="color:#cba6f7">操作步骤：</b>
+        <ol style="margin:8px 0 0 16px;padding:0;color:#cdd6f4">
+          <li>点击下方按钮，在<b>新标签页</b>完成 Pixiv 账号登录</li>
+          <li>登录成功后，浏览器会尝试打开 <code style="color:#a6e3a1">pixiv://</code> 链接<br>
+              此时页面可能<b>白屏</b>或显示"无法打开此页面"，这是<b>正常现象</b></li>
+          <li>查看浏览器<b>地址栏</b>，复制完整 URL（以 <code style="color:#a6e3a1">pixiv://account/login?code=</code> 开头）</li>
+          <li>将 URL 粘贴到下方输入框，点击确认</li>
+        </ol>
+        <p style="margin:8px 0 0;color:#f38ba8;font-size:12px">
+          ⚠️ 请勿粘贴登录前的跳转地址（以 https:// 开头的均为错误地址）
+        </p>
+      </div>
+
+      <button id="pixiv-login-btn">① 用浏览器登录 Pixiv</button>
+
+      <div id="pixiv-callback-section" style="display:none;width:100%;max-width:500px;flex-direction:column;gap:8px;align-items:center">
+        <p style="color:#a6e3a1;margin:0;font-size:13px">✓ 已打开授权页，完成登录后将地址栏 URL 粘贴到下方</p>
+        <input id="pixiv-redirect-input" type="text" placeholder="pixiv://account/login?code=..." />
+        <button id="pixiv-submit-code-btn">② 确认登录</button>
         <p id="pixiv-login-error" style="color:#f38ba8;display:none;margin:0"></p>
       </div>
     </div>
@@ -144,7 +158,8 @@ function renderLoginPage(contentEl) {
       const resp = await fetch("/pixiv/auth/login", { method: "POST" });
       const data = await resp.json();
       window.open(data.auth_url, "_blank");
-      document.getElementById("pixiv-callback-section").style.display = "flex";
+      const section = document.getElementById("pixiv-callback-section");
+      section.style.display = "flex";
     } catch (e) {
       console.error("[PixivBrowser] Login init failed:", e);
     }
@@ -154,6 +169,14 @@ function renderLoginPage(contentEl) {
     const redirectUrl = document.getElementById("pixiv-redirect-input").value.trim();
     const errEl = document.getElementById("pixiv-login-error");
     if (!redirectUrl) return;
+
+    // Client-side validation: must start with pixiv://
+    if (!redirectUrl.startsWith("pixiv://")) {
+      errEl.textContent = "请粘贴以 pixiv:// 开头的地址，而非登录前的跳转地址";
+      errEl.style.display = "block";
+      return;
+    }
+
     errEl.style.display = "none";
     try {
       const resp = await fetch("/pixiv/auth/callback", {
