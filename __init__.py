@@ -135,6 +135,32 @@ try:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
+    @routes.post("/pixiv/bookmark_delete")
+    async def pixiv_del_bookmark(request):
+        data = await request.json()
+        illust_id = data.get("illust_id")
+        if not illust_id:
+            return web.json_response({"error": "illust_id required"}, status=400)
+        try:
+            _client_instance.ensure_logged_in()
+            _client_instance.api.illust_bookmark_delete(int(illust_id))
+            return web.json_response({"ok": True})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    @routes.post("/pixiv/follow")
+    async def pixiv_add_follow(request):
+        data = await request.json()
+        user_id = data.get("user_id")
+        if not user_id:
+            return web.json_response({"error": "user_id required"}, status=400)
+        try:
+            _client_instance.ensure_logged_in()
+            _client_instance.api.user_follow_add(int(user_id))
+            return web.json_response({"ok": True})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
     # ── Image Proxy ───────────────────────────────────────────────────────────
 
     @routes.get("/pixiv/image_proxy")

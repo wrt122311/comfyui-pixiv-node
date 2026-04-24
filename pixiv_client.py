@@ -120,6 +120,7 @@ class PixivClient:
                     "id": i.user.id,
                     "name": i.user.name,
                     "profile_image_urls": {"medium": i.user.profile_image_urls.medium},
+                    "is_followed": bool(getattr(i.user, "is_followed", False)),
                 },
             })
         return {"illusts": illusts, "next_url": result.next_url}

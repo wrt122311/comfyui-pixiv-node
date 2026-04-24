@@ -38,6 +38,7 @@ function initNodeBrowser(container, idsWidget) {
       artistNextUrl: null,
       rankingMode: "day",
       cachedPanes: {},
+      pendingArtistId: null,
     },
   };
 
@@ -477,31 +478,44 @@ function createCard(ctx, illust) {
     <div class="px-card-title">${esc(illust.title)}</div>
   `;
 
-  // Bookmark button
+  // Bookmark button (toggle)
   const bmBtn = document.createElement("button");
   bmBtn.className = "px-bookmark-btn" + (illust.is_bookmarked ? " bookmarked" : "");
   bmBtn.textContent = illust.is_bookmarked ? "♥" : "♡";
-  bmBtn.title = illust.is_bookmarked ? "已收藏" : "收藏到 Pixiv";
+  bmBtn.title = illust.is_bookmarked ? "已收藏（点击取消）" : "收藏到 Pixiv";
   bmBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
-    if (bmBtn.classList.contains("bookmarked")) return;
+    const isBookmarked = bmBtn.classList.contains("bookmarked");
+    const endpoint = isBookmarked ? "/pixiv/bookmark_delete" : "/pixiv/bookmark";
     try {
-      const resp = await fetch("/pixiv/bookmark", {
+      const resp = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ illust_id: illust.id }),
       });
       const data = await resp.json();
       if (data.ok) {
-        bmBtn.classList.add("bookmarked");
-        bmBtn.textContent = "♥";
-        bmBtn.title = "已收藏";
+        const nowBookmarked = !isBookmarked;
+        bmBtn.classList.toggle("bookmarked", nowBookmarked);
+        bmBtn.textContent = nowBookmarked ? "♥" : "♡";
+        bmBtn.title = nowBookmarked ? "已收藏（点击取消）" : "收藏到 Pixiv";
         const cached = illustCache.get(id);
-        if (cached) cached.is_bookmarked = true;
+        if (cached) cached.is_bookmarked = nowBookmarked;
       }
     } catch (_) {}
   });
   card.appendChild(bmBtn);
+
+  // Artist button
+  const artistBtn = document.createElement("button");
+  artistBtn.className = "px-artist-btn";
+  artistBtn.textContent = "↗";
+  artistBtn.title = `查看 ${illust.user.name} 的作品`;
+  artistBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    viewArtistFromCard(ctx, illust.user);
+  });
+  card.appendChild(artistBtn);
 
   const idx = S.selectedIds.indexOf(id);
   if (idx !== -1) {
@@ -591,9 +605,18 @@ function renderSelectedPane(ctx) {
   }
 }
 
+function viewArtistFromCard(ctx, user) {
+  ctx.S.pendingArtistId = { id: user.id, name: user.name, isFollowed: !!user.is_followed };
+  delete ctx.S.cachedPanes["artists"];
+  switchTab(ctx, "artists");
+}
+
 // ── Artist tab ────────────────────────────────────────────────────────────────
 async function renderArtistPane(ctx) {
   const { contentEl, S } = ctx;
+  const pending = S.pendingArtistId;
+  S.pendingArtistId = null;
+
   contentEl.innerHTML = `
     <div class="px-artist-container">
       <div class="px-rank-bar">
@@ -603,7 +626,7 @@ async function renderArtistPane(ctx) {
       <div class="px-artist-pane">
         <div class="px-artist-list"><div class="px-loading">加载中...</div></div>
         <div class="px-artist-works-pane">
-          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#7f849c;font-size:12px">请从左侧选择画师</div>
+          <div class="px-artist-works-placeholder">请从左侧选择画师</div>
         </div>
       </div>
     </div>
@@ -621,6 +644,7 @@ async function renderArtistPane(ctx) {
     }
     const data = await resp.json();
     renderArtistList(ctx, data.artists, contentEl.querySelector(".px-artist-list"));
+    if (pending) loadArtistWorks(ctx, pending.id, pending);
   } catch (e) {
     contentEl.querySelector(".px-artist-list").innerHTML =
       `<div class="px-error">加载失败: ${esc(e.message)}</div>`;
@@ -640,22 +664,53 @@ function renderArtistList(ctx, artists, listEl) {
     item.addEventListener("click", () => {
       listEl.querySelectorAll(".px-artist-item").forEach(el => el.classList.remove("active"));
       item.classList.add("active");
-      loadArtistWorks(ctx, artist.id);
+      loadArtistWorks(ctx, artist.id, { id: artist.id, name: artist.name, isFollowed: true });
     });
     listEl.appendChild(item);
   }
 }
 
-async function loadArtistWorks(ctx, artistId) {
+async function loadArtistWorks(ctx, artistId, artistInfo = null) {
   const { contentEl, S } = ctx;
   S.activeArtistId = artistId;
   S.artistNextUrl  = undefined;
 
   const worksPane = contentEl.querySelector(".px-artist-works-pane");
+  const headerHTML = artistInfo ? `
+    <div class="px-artist-works-header">
+      <span class="px-artist-works-name">${esc(artistInfo.name)}</span>
+      ${artistInfo.isFollowed
+        ? `<span class="px-followed-badge">已关注</span>`
+        : `<button class="px-follow-btn" data-uid="${artistInfo.id}">+ 关注</button>`}
+    </div>
+  ` : "";
   worksPane.innerHTML = `
-    <div class="px-grid"></div>
-    <div class="px-loading" style="display:none">加载中...</div>
+    ${headerHTML}
+    <div class="px-artist-grid-scroll">
+      <div class="px-grid"></div>
+      <div class="px-loading" style="display:none">加载中...</div>
+    </div>
   `;
+  if (artistInfo && !artistInfo.isFollowed) {
+    worksPane.querySelector(".px-follow-btn")?.addEventListener("click", async () => {
+      try {
+        const resp = await fetch("/pixiv/follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: artistInfo.id }),
+        });
+        if ((await resp.json()).ok) {
+          const btn = worksPane.querySelector(".px-follow-btn");
+          if (btn) {
+            const badge = document.createElement("span");
+            badge.className = "px-followed-badge";
+            badge.textContent = "已关注";
+            btn.replaceWith(badge);
+          }
+        }
+      } catch (_) {}
+    });
+  }
   await loadMoreArtistWorks(ctx, artistId);
   setupArtistInfiniteScroll(ctx, artistId);
 }
@@ -668,8 +723,8 @@ async function loadMoreArtistWorks(ctx, artistId) {
   if (nextUrl === null) return;
 
   S.loading = true;
-  const worksPane = contentEl.querySelector(".px-artist-works-pane");
-  const loadEl    = worksPane?.querySelector(".px-loading");
+  const scrollEl = contentEl.querySelector(".px-artist-grid-scroll");
+  const loadEl   = scrollEl?.querySelector(".px-loading");
   if (loadEl) loadEl.style.display = "flex";
 
   try {
@@ -680,18 +735,17 @@ async function loadMoreArtistWorks(ctx, artistId) {
       throw new Error(body.error || `HTTP ${resp.status}`);
     }
     const data = await resp.json();
-    if (S.activeArtistId !== artistId) return;  // switched while awaiting
+    if (S.activeArtistId !== artistId) return;
     S.artistNextUrl = data.next_url ?? null;
-    const gridEl = worksPane?.querySelector(".px-grid");
+    const gridEl = scrollEl?.querySelector(".px-grid");
     for (const illust of data.illusts) {
       gridEl?.appendChild(createCard(ctx, illust));
     }
-    // Auto-fill if pane not yet scrollable
-    if (worksPane && worksPane.scrollHeight <= worksPane.clientHeight + 50 && S.artistNextUrl !== null) {
+    if (scrollEl && scrollEl.scrollHeight <= scrollEl.clientHeight + 50 && S.artistNextUrl !== null) {
       setTimeout(() => loadMoreArtistWorks(ctx, artistId), 0);
     }
   } catch (e) {
-    worksPane?.querySelector(".px-grid")
+    scrollEl?.querySelector(".px-grid")
       ?.insertAdjacentHTML("beforeend", `<div class="px-error">加载失败: ${esc(e.message)}</div>`);
   } finally {
     S.loading = false;
@@ -700,11 +754,10 @@ async function loadMoreArtistWorks(ctx, artistId) {
 }
 
 function setupArtistInfiniteScroll(ctx, artistId) {
-  const { contentEl } = ctx;
-  const worksPane = contentEl.querySelector(".px-artist-works-pane");
-  if (!worksPane) return;
-  worksPane.addEventListener("scroll", () => {
-    if (worksPane.scrollHeight - worksPane.scrollTop - worksPane.clientHeight < 400) {
+  const scrollEl = ctx.contentEl.querySelector(".px-artist-grid-scroll");
+  if (!scrollEl) return;
+  scrollEl.addEventListener("scroll", () => {
+    if (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 400) {
       loadMoreArtistWorks(ctx, artistId);
     }
   }, { passive: true });
