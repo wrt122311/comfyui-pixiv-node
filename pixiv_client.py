@@ -4,6 +4,7 @@ import base64
 import re
 import time
 import requests
+from urllib.parse import urlparse, parse_qs
 from pixivpy3 import AppPixivAPI
 
 
@@ -22,6 +23,10 @@ class PixivClient:
             hashlib.sha256(verifier.encode()).digest()
         ).rstrip(b'=').decode()
         return verifier, challenge
+
+    def _next_qs(self, next_url: str) -> dict:
+        parsed = urlparse(next_url)
+        return {k: v[0] for k, v in parse_qs(parsed.query).items()}
 
     def get_login_url(self, code_challenge: str) -> str:
         return (
@@ -59,22 +64,22 @@ class PixivClient:
 
     def get_recommended(self, next_url=None):
         self.ensure_logged_in()
-        kwargs = self.api.next_qs(next_url) if next_url else {}
+        kwargs = self._next_qs(next_url) if next_url else {}
         return self._fmt_illusts(self.api.illust_recommended(**kwargs))
 
     def get_ranking(self, mode='day', next_url=None):
         self.ensure_logged_in()
-        kwargs = self.api.next_qs(next_url) if next_url else {"mode": mode}
+        kwargs = self._next_qs(next_url) if next_url else {"mode": mode}
         return self._fmt_illusts(self.api.illust_ranking(**kwargs))
 
     def get_bookmarks(self, next_url=None):
         self.ensure_logged_in()
-        kwargs = self.api.next_qs(next_url) if next_url else {"user_id": self.api.user_id}
+        kwargs = self._next_qs(next_url) if next_url else {"user_id": self.api.user_id}
         return self._fmt_illusts(self.api.user_bookmarks_illust(**kwargs))
 
     def get_bookmarked_artists(self, next_url=None):
         self.ensure_logged_in()
-        kwargs = self.api.next_qs(next_url) if next_url else {"user_id": self.api.user_id}
+        kwargs = self._next_qs(next_url) if next_url else {"user_id": self.api.user_id}
         result = self.api.user_following(**kwargs)
         artists = [
             {
@@ -88,7 +93,7 @@ class PixivClient:
 
     def get_artist_works(self, artist_id, next_url=None):
         self.ensure_logged_in()
-        kwargs = self.api.next_qs(next_url) if next_url else {"user_id": artist_id}
+        kwargs = self._next_qs(next_url) if next_url else {"user_id": artist_id}
         return self._fmt_illusts(self.api.user_illusts(**kwargs))
 
     def _fmt_illusts(self, result):
