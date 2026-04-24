@@ -36,20 +36,28 @@ class PixivBrowser:
         tensors = []
 
         errors = []
+        images = []
         for artwork_id in ids:
             try:
                 url = client.get_original_url(int(artwork_id))
                 raw = client.download_image_bytes(url)
                 img = Image.open(io.BytesIO(raw)).convert("RGB")
-                arr = np.array(img, dtype=np.float32) / 255.0
-                tensors.append(torch.from_numpy(arr))
+                images.append(img)
             except Exception as e:
                 msg = f"{artwork_id}: {e}"
                 print(f"[PixivBrowser] Skipping {msg}")
                 errors.append(msg)
 
-        if not tensors:
+        if not images:
             detail = "\n".join(errors[:5])
             raise ValueError(f"所有图片下载失败:\n{detail}")
+
+        # Resize all to the first image's dimensions so torch.stack works
+        target_w, target_h = images[0].size
+        for img in images:
+            if img.size != (target_w, target_h):
+                img = img.resize((target_w, target_h), Image.LANCZOS)
+            arr = np.array(img, dtype=np.float32) / 255.0
+            tensors.append(torch.from_numpy(arr))
 
         return (torch.stack(tensors),)
