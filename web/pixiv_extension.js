@@ -36,6 +36,7 @@ function initNodeBrowser(container, idsWidget) {
       loading: false,
       activeArtistId: null,
       artistNextUrl: null,
+      rankingMode: "day",
     },
   };
 
@@ -256,9 +257,56 @@ function switchTab(ctx, tabName) {
     renderSelectedPane(ctx);
   } else if (tabName === "artists") {
     renderArtistPane(ctx);
+  } else if (tabName === "ranking") {
+    renderRankingPane(ctx);
   } else {
     openMainBrowser(ctx);
   }
+}
+
+// ── Ranking pane ──────────────────────────────────────────────────────────────
+const RANKING_MODES = [
+  { id: "day",           label: "日榜" },
+  { id: "week",          label: "周榜" },
+  { id: "month",         label: "月榜" },
+  { id: "day_male",      label: "男性向" },
+  { id: "day_female",    label: "女性向" },
+  { id: "week_original", label: "原创" },
+  { id: "week_rookie",   label: "新人" },
+];
+
+function renderRankingPane(ctx) {
+  const { contentEl, S } = ctx;
+  contentEl.innerHTML = `
+    <div class="px-ranking-pane">
+      <div class="px-rank-bar">
+        ${RANKING_MODES.map(m =>
+          `<button class="px-rank-btn${S.rankingMode === m.id ? " active" : ""}" data-mode="${m.id}">${m.label}</button>`
+        ).join("")}
+      </div>
+      <div class="px-rank-grid-wrap">
+        <div class="px-grid-pane">
+          <div class="px-grid"></div>
+          <div class="px-loading" style="display:none">加载中...</div>
+        </div>
+      </div>
+    </div>
+  `;
+  contentEl.querySelectorAll(".px-rank-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (S.rankingMode === btn.dataset.mode) return;
+      S.rankingMode = btn.dataset.mode;
+      S.nextUrls["ranking"] = undefined;
+      contentEl.querySelectorAll(".px-rank-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const grid = contentEl.querySelector(".px-grid");
+      if (grid) grid.innerHTML = "";
+      loadMoreImages(ctx, "ranking");
+    });
+  });
+  S.nextUrls["ranking"] = undefined;
+  loadMoreImages(ctx, "ranking");
+  setupInfiniteScroll(ctx, "ranking");
 }
 
 // ── Main image browser ────────────────────────────────────────────────────────
@@ -276,12 +324,13 @@ async function openMainBrowser(ctx) {
   setupInfiniteScroll(ctx, tab);
 }
 
-async function fetchImages(tab, nextUrl) {
-  const params = nextUrl ? `?next_url=${encodeURIComponent(nextUrl)}` : "";
+async function fetchImages(tab, nextUrl, S) {
+  const np = nextUrl ? `&next_url=${encodeURIComponent(nextUrl)}` : "";
+  const q  = nextUrl ? `?next_url=${encodeURIComponent(nextUrl)}` : "";
   const urls = {
-    recommended: `/pixiv/recommended${params}`,
-    ranking:     `/pixiv/ranking${params}`,
-    bookmarks:   `/pixiv/bookmarks${params}`,
+    recommended: `/pixiv/recommended${q}`,
+    ranking:     `/pixiv/ranking?mode=${encodeURIComponent(S?.rankingMode || "day")}${np}`,
+    bookmarks:   `/pixiv/bookmarks${q}`,
   };
   const resp = await fetch(urls[tab]);
   if (!resp.ok) {
@@ -304,7 +353,7 @@ async function loadMoreImages(ctx, tab) {
   if (loadEl) loadEl.style.display = "flex";
 
   try {
-    const data = await fetchImages(tab, nextUrl);
+    const data = await fetchImages(tab, nextUrl, S);
     if (S.activeTab !== tab) return;  // switched while awaiting
     S.nextUrls[tab] = data.next_url ?? null;
     const gridEl = contentEl.querySelector(".px-grid");
