@@ -49,18 +49,38 @@ pip install pixivpy3 Pillow
 
 ## 首次登录
 
-节点首次使用时需要完成 Pixiv OAuth 授权，之后 token 自动保存，重启无需重新登录。
+节点首次使用时需要完成登录，之后 token 自动保存，重启无需重新登录。
 
-1. 在 ComfyUI 画布中添加 **Pixiv Browser** 节点（Add Node → image/pixiv → Pixiv Browser）
-2. 点击节点上的 **🖼 浏览 Pixiv** 按钮，弹出浏览器弹窗
-3. 弹窗显示登录页，点击 **"用浏览器登录 Pixiv"**
-4. 新标签页打开 Pixiv 授权页，完成登录
-5. 授权完成后浏览器会跳转到类似下面的地址（可能显示错误页，属正常现象）：
+弹窗提供两种登录方式：
+
+### 方式一：Refresh Token（推荐）
+
+1. 在 ComfyUI 的 Python 环境中安装工具：
+   ```bash
+   pip install gppt
+   ```
+2. 运行登录命令（将邮箱和密码替换为你的账号）：
+   ```bash
+   gppt login-headless -u 你的邮箱 -p 你的密码
+   ```
+3. 复制终端输出中的 `refresh_token` 值
+4. 在 ComfyUI 画布中添加 **Pixiv Browser** 节点，点击 **🖼 浏览 Pixiv** 按钮
+5. 弹窗默认显示"🔑 Refresh Token（推荐）"标签，将 token 粘贴到输入框，点击 **"保存并登录"**
+6. 弹窗自动切换到图片浏览界面，登录完成
+
+### 方式二：OAuth 授权（备选）
+
+适用于无法使用命令行工具的情况。
+
+1. 点击节点上的 **🖼 浏览 Pixiv** 按钮，弹出弹窗
+2. 切换到 **"🌐 OAuth 授权"** 标签
+3. 点击 **"① 用浏览器登录 Pixiv"**，在新标签页完成 Pixiv 账号登录
+4. 登录后查看浏览器**地址栏**，若出现以下格式的 URL：
    ```
    pixiv://account/login?code=XXXXXXXXXXXXXXXX&via=login
    ```
-6. 将地址栏中的完整 URL 复制，粘贴到弹窗的输入框中，点击 **"确认登录"**
-7. 弹窗自动切换到图片浏览界面，登录完成
+   将其完整复制，粘贴到弹窗输入框，点击 **"② 确认登录"**
+5. 若地址栏始终未出现 `pixiv://` 开头的 URL（部分浏览器/系统不支持），请改用方式一
 
 > Token 保存在节点目录下的 `config.json`，请勿将此文件提交到 git（已自动加入 `.gitignore`）
 
@@ -207,8 +227,14 @@ pip install pixivpy3 Pillow
 
 ## 常见问题
 
+**Q: `gppt login-headless` 报错或找不到命令？**  
+A: 确认在 ComfyUI 所用的 Python 环境中安装了 gppt：`pip install gppt`。便携版用户请用 `python_embeded\python.exe -m pip install gppt`。
+
+**Q: OAuth 登录后地址栏没有出现 `pixiv://` 开头的 URL？**  
+A: 部分浏览器（如 Chrome/Edge）在未安装 Pixiv 客户端时不会显示 `pixiv://` 协议地址。请改用方式一（Refresh Token）登录。
+
 **Q: 登录后弹窗没有自动刷新？**  
-A: 检查粘贴的 URL 是否完整，必须以 `pixiv://account/login?code=` 开头。
+A: 检查粘贴的 URL 是否完整，OAuth 方式要求以 `pixiv://account/login?code=` 开头。
 
 **Q: 图片加载不出来？**  
 A: Pixiv 图片需要通过代理加载以绕过防盗链限制，代理由节点自动处理。若仍失败，检查网络是否能访问 Pixiv（可能需要代理工具）。
