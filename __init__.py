@@ -148,6 +148,32 @@ try:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
+    @routes.get("/pixiv/search/illusts")
+    async def pixiv_search_illusts(request):
+        word = request.query.get("word", "")
+        next_url = request.query.get("next_url")
+        if not word and not next_url:
+            return web.json_response({"error": "word required"}, status=400)
+        try:
+            return web.json_response(_client_instance.search_illusts(word, next_url=next_url))
+        except RuntimeError as e:
+            return web.json_response({"error": str(e)}, status=401)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    @routes.get("/pixiv/search/users")
+    async def pixiv_search_users(request):
+        word = request.query.get("word", "")
+        next_url = request.query.get("next_url")
+        if not word and not next_url:
+            return web.json_response({"error": "word required"}, status=400)
+        try:
+            return web.json_response(_client_instance.search_users(word, next_url=next_url))
+        except RuntimeError as e:
+            return web.json_response({"error": str(e)}, status=401)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
     @routes.post("/pixiv/follow")
     async def pixiv_add_follow(request):
         data = await request.json()

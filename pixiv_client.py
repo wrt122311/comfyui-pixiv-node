@@ -136,6 +136,27 @@ class PixivClient:
         response.raise_for_status()
         return response.content
 
+    def search_illusts(self, word, next_url=None):
+        self.ensure_logged_in()
+        kwargs = self._next_qs(next_url) if next_url else {
+            "word": word, "search_target": "partial_match_for_tags"
+        }
+        return self._fmt_illusts(self.api.search_illust(**kwargs))
+
+    def search_users(self, word, next_url=None):
+        self.ensure_logged_in()
+        kwargs = self._next_qs(next_url) if next_url else {"word": word}
+        result = self.api.search_user(**kwargs)
+        artists = [
+            {
+                "id": p.user.id,
+                "name": p.user.name,
+                "profile_image_urls": {"medium": p.user.profile_image_urls.medium},
+            }
+            for p in result.user_previews
+        ]
+        return {"artists": artists, "next_url": result.next_url}
+
     def get_original_url(self, illust_id: int) -> str:
         self.ensure_logged_in()
         detail = self.api.illust_detail(illust_id).illust

@@ -18,6 +18,32 @@ function esc(str) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ── Masonry helpers ───────────────────────────────────────────────────────────
+function setupMasonry(gridEl) {
+  if (!gridEl) return [];
+  const w = gridEl.parentElement?.clientWidth || 600;
+  const n = Math.max(2, Math.floor(w / 130));
+  gridEl.innerHTML = "";
+  const cols = [];
+  for (let i = 0; i < n; i++) {
+    const col = document.createElement("div");
+    col.className = "px-masonry-col";
+    gridEl.appendChild(col);
+    cols.push(col);
+  }
+  return cols;
+}
+
+function masonryAdd(cols, el) {
+  if (!cols?.length) return;
+  let minH = Infinity, idx = 0;
+  for (let i = 0; i < cols.length; i++) {
+    const h = cols[i].offsetHeight;
+    if (h < minH) { minH = h; idx = i; }
+  }
+  cols[idx].appendChild(el);
+}
+
 // ── Per-node browser init ─────────────────────────────────────────────────────
 // ctx = { container, contentEl, idsWidget, S }
 
@@ -39,6 +65,13 @@ function initNodeBrowser(container, idsWidget) {
       rankingMode: "day",
       cachedPanes: {},
       pendingArtistId: null,
+      masonryCols: {},
+      artistMasonryCols: null,
+      searchQuery: "",
+      searchType: "illusts",
+      searchNextUrl: null,
+      searchMasonryCols: null,
+      searchLoading: false,
     },
   };
 
@@ -49,6 +82,7 @@ function initNodeBrowser(container, idsWidget) {
       <button class="px-tab" data-tab="ranking">排行榜</button>
       <button class="px-tab" data-tab="bookmarks">收藏</button>
       <button class="px-tab" data-tab="artists">画师</button>
+      <button class="px-tab" data-tab="search">搜索</button>
       <button class="px-tab px-sel-tab" data-tab="selected">已选</button>
     </div>
     <div class="px-content"></div>
@@ -277,6 +311,7 @@ function renderTabPane(ctx, tabName) {
   else if (tabName === "ranking") renderRankingPane(ctx);
   else if (tabName === "bookmarks") renderBookmarksPane(ctx);
   else if (tabName === "artists") renderArtistPane(ctx);
+  else if (tabName === "search")  renderSearchPane(ctx);
 }
 
 // ── Recommended pane (cached) ─────────────────────────────────────────────────
@@ -302,6 +337,7 @@ function renderRecommendedPane(ctx) {
     renderRecommendedPane(ctx);
   });
   S.nextUrls["recommended"] = undefined;
+  S.masonryCols["recommended"] = setupMasonry(contentEl.querySelector(".px-grid"));
   loadMoreImages(ctx, "recommended");
   setupInfiniteScroll(ctx, "recommended");
 }
@@ -329,6 +365,7 @@ function renderBookmarksPane(ctx) {
     renderBookmarksPane(ctx);
   });
   S.nextUrls["bookmarks"] = undefined;
+  S.masonryCols["bookmarks"] = setupMasonry(contentEl.querySelector(".px-grid"));
   loadMoreImages(ctx, "bookmarks");
   setupInfiniteScroll(ctx, "bookmarks");
 }
@@ -371,7 +408,7 @@ function renderRankingPane(ctx) {
       contentEl.querySelectorAll(".px-rank-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       const grid = contentEl.querySelector(".px-grid");
-      if (grid) grid.innerHTML = "";
+      if (grid) S.masonryCols["ranking"] = setupMasonry(grid);
       loadMoreImages(ctx, "ranking");
     });
   });
@@ -381,25 +418,12 @@ function renderRankingPane(ctx) {
     renderRankingPane(ctx);
   });
   S.nextUrls["ranking"] = undefined;
+  S.masonryCols["ranking"] = setupMasonry(contentEl.querySelector(".px-grid"));
   loadMoreImages(ctx, "ranking");
   setupInfiniteScroll(ctx, "ranking");
 }
 
-// ── Main image browser ────────────────────────────────────────────────────────
-async function openMainBrowser(ctx) {
-  const { contentEl, S } = ctx;
-  contentEl.innerHTML = `
-    <div class="px-grid-pane">
-      <div class="px-grid"></div>
-      <div class="px-loading" style="display:none">加载中...</div>
-    </div>
-  `;
-  const tab = S.activeTab;
-  S.nextUrls[tab] = undefined;
-  await loadMoreImages(ctx, tab);
-  setupInfiniteScroll(ctx, tab);
-}
-
+// ── Image fetch + load ────────────────────────────────────────────────────────
 async function fetchImages(tab, nextUrl, S) {
   const np = nextUrl ? `&next_url=${encodeURIComponent(nextUrl)}` : "";
   const q  = nextUrl ? `?next_url=${encodeURIComponent(nextUrl)}` : "";
@@ -419,7 +443,7 @@ async function fetchImages(tab, nextUrl, S) {
 async function loadMoreImages(ctx, tab) {
   const { contentEl, S } = ctx;
   if (S.loading) return;
-  if (S.activeTab !== tab) return;   // tab switched while async, abort
+  if (S.activeTab !== tab) return;
   const nextUrl = S.nextUrls[tab];
   if (nextUrl === null) return;
 
@@ -430,19 +454,21 @@ async function loadMoreImages(ctx, tab) {
 
   try {
     const data = await fetchImages(tab, nextUrl, S);
-    if (S.activeTab !== tab) return;  // switched while awaiting
+    if (S.activeTab !== tab) return;
     S.nextUrls[tab] = data.next_url ?? null;
+    const cols   = S.masonryCols[tab];
     const gridEl = contentEl.querySelector(".px-grid");
     for (const illust of data.illusts) {
-      gridEl.appendChild(createCard(ctx, illust));
+      const card = createCard(ctx, illust);
+      if (cols?.length) masonryAdd(cols, card);
+      else gridEl?.appendChild(card);
     }
-    // If content still doesn't fill the pane, load next page automatically
     if (pane && pane.scrollHeight <= pane.clientHeight + 50 && S.nextUrls[tab] !== null) {
       setTimeout(() => loadMoreImages(ctx, tab), 0);
     }
   } catch (e) {
-    contentEl.querySelector(".px-grid")
-      ?.insertAdjacentHTML("beforeend", `<div class="px-error">加载失败: ${esc(e.message)}</div>`);
+    pane?.insertAdjacentHTML("beforeend",
+      `<div class="px-error">加载失败: ${esc(e.message)}</div>`);
   } finally {
     S.loading = false;
     if (loadEl) loadEl.style.display = "none";
@@ -553,13 +579,18 @@ function rebadgeAll(ctx) {
 // ── Selected pane ─────────────────────────────────────────────────────────────
 function renderSelectedPane(ctx) {
   const { contentEl, S } = ctx;
-  contentEl.innerHTML = `<div class="px-grid-pane"><div class="px-grid"></div></div>`;
-  const grid = contentEl.querySelector(".px-grid");
 
   if (S.selectedIds.length === 0) {
-    grid.innerHTML = `<div class="px-empty">尚未选择任何图片</div>`;
+    contentEl.innerHTML = `
+      <div class="px-grid-pane" style="display:flex;align-items:center;justify-content:center">
+        <div class="px-empty">尚未选择任何图片</div>
+      </div>`;
     return;
   }
+
+  contentEl.innerHTML = `<div class="px-grid-pane"><div class="px-grid"></div></div>`;
+  const gridEl = contentEl.querySelector(".px-grid");
+  const cols   = setupMasonry(gridEl);
 
   for (const id of [...S.selectedIds]) {
     const illust = illustCache.get(id);
@@ -587,21 +618,13 @@ function renderSelectedPane(ctx) {
       const i = S.selectedIds.indexOf(id);
       if (i !== -1) {
         S.selectedIds.splice(i, 1);
-        card.remove();
         updateCount(ctx);
         commitSelection(ctx);
-        if (S.selectedIds.length === 0) {
-          grid.innerHTML = `<div class="px-empty">尚未选择任何图片</div>`;
-        } else {
-          grid.querySelectorAll(".px-card").forEach(c => {
-            const b = c.querySelector(".px-seq-badge");
-            if (b) b.textContent = S.selectedIds.indexOf(c.dataset.id) + 1;
-          });
-        }
+        renderSelectedPane(ctx);
       }
     });
 
-    grid.appendChild(card);
+    masonryAdd(cols, card);
   }
 }
 
@@ -691,6 +714,7 @@ async function loadArtistWorks(ctx, artistId, artistInfo = null) {
       <div class="px-loading" style="display:none">加载中...</div>
     </div>
   `;
+  S.artistMasonryCols = setupMasonry(worksPane.querySelector(".px-grid"));
   if (artistInfo && !artistInfo.isFollowed) {
     worksPane.querySelector(".px-follow-btn")?.addEventListener("click", async () => {
       try {
@@ -718,7 +742,7 @@ async function loadArtistWorks(ctx, artistId, artistInfo = null) {
 async function loadMoreArtistWorks(ctx, artistId) {
   const { contentEl, S } = ctx;
   if (S.loading) return;
-  if (S.activeArtistId !== artistId) return;  // artist switched, abort
+  if (S.activeArtistId !== artistId) return;
   const nextUrl = S.artistNextUrl;
   if (nextUrl === null) return;
 
@@ -737,9 +761,12 @@ async function loadMoreArtistWorks(ctx, artistId) {
     const data = await resp.json();
     if (S.activeArtistId !== artistId) return;
     S.artistNextUrl = data.next_url ?? null;
+    const cols   = S.artistMasonryCols;
     const gridEl = scrollEl?.querySelector(".px-grid");
     for (const illust of data.illusts) {
-      gridEl?.appendChild(createCard(ctx, illust));
+      const card = createCard(ctx, illust);
+      if (cols?.length) masonryAdd(cols, card);
+      else gridEl?.appendChild(card);
     }
     if (scrollEl && scrollEl.scrollHeight <= scrollEl.clientHeight + 50 && S.artistNextUrl !== null) {
       setTimeout(() => loadMoreArtistWorks(ctx, artistId), 0);
@@ -761,6 +788,159 @@ function setupArtistInfiniteScroll(ctx, artistId) {
       loadMoreArtistWorks(ctx, artistId);
     }
   }, { passive: true });
+}
+
+// ── Search pane ───────────────────────────────────────────────────────────────
+function renderSearchPane(ctx) {
+  const { contentEl, S } = ctx;
+  contentEl.innerHTML = `
+    <div class="px-recommended-pane">
+      <div class="px-rank-bar" style="gap:6px">
+        <input class="px-search-input" type="text" value="${esc(S.searchQuery)}"
+          placeholder="搜索作品、标签或画师..."
+          style="flex:1;padding:4px 8px;background:#313244;border:1px solid #45475a;
+                 border-radius:4px;color:#cdd6f4;font-size:12px;min-width:0;outline:none" />
+        <button class="px-search-btn px-rank-btn" style="white-space:nowrap">搜索</button>
+      </div>
+      <div class="px-rank-bar" style="padding-top:0;border-bottom:1px solid #3a3a5c">
+        <button class="px-rank-btn${S.searchType === "illusts" ? " active" : ""}" data-search-type="illusts">作品/标签</button>
+        <button class="px-rank-btn${S.searchType === "users" ? " active" : ""}" data-search-type="users">画师</button>
+        <span style="flex:1"></span>
+      </div>
+      <div class="px-rank-grid-wrap">
+        <div class="px-grid-pane">
+          <div class="px-grid"></div>
+          <div class="px-loading" style="display:none">加载中...</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const input  = contentEl.querySelector(".px-search-input");
+  const gridEl = contentEl.querySelector(".px-grid");
+
+  const initGrid = () => {
+    if (S.searchType === "illusts") {
+      gridEl.removeAttribute("style");
+      S.searchMasonryCols = setupMasonry(gridEl);
+    } else {
+      gridEl.innerHTML = "";
+      gridEl.removeAttribute("style");
+      Object.assign(gridEl.style, {
+        display: "flex", flexDirection: "column", padding: "6px", gap: "2px",
+      });
+      S.searchMasonryCols = null;
+    }
+  };
+
+  const doSearch = () => {
+    const word = input.value.trim();
+    if (!word) return;
+    S.searchQuery = word;
+    S.searchNextUrl = undefined;
+    initGrid();
+    loadSearchResults(ctx);
+  };
+
+  contentEl.querySelector(".px-search-btn").addEventListener("click", doSearch);
+  input.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+
+  contentEl.querySelectorAll("[data-search-type]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (S.searchType === btn.dataset.searchType) return;
+      S.searchType = btn.dataset.searchType;
+      contentEl.querySelectorAll("[data-search-type]").forEach(b => {
+        b.classList.toggle("active", b.dataset.searchType === S.searchType);
+      });
+      if (S.searchQuery) {
+        S.searchNextUrl = undefined;
+        initGrid();
+        loadSearchResults(ctx);
+      }
+    });
+  });
+
+  // Infinite scroll for both illusts and users
+  const pane = contentEl.querySelector(".px-grid-pane");
+  if (pane) {
+    pane.addEventListener("scroll", () => {
+      if (pane.scrollHeight - pane.scrollTop - pane.clientHeight < 400) {
+        loadSearchResults(ctx);
+      }
+    }, { passive: true });
+  }
+}
+
+async function loadSearchResults(ctx) {
+  const { contentEl, S } = ctx;
+  if (S.searchLoading) return;
+  if (S.activeTab !== "search") return;
+  if (!S.searchQuery) return;
+  const nextUrl = S.searchNextUrl;
+  if (nextUrl === null) return;
+
+  S.searchLoading = true;
+  const pane   = contentEl.querySelector(".px-grid-pane");
+  const loadEl = contentEl.querySelector(".px-loading");
+  if (loadEl) loadEl.style.display = "flex";
+
+  try {
+    if (S.searchType === "illusts") {
+      const params = nextUrl
+        ? `?next_url=${encodeURIComponent(nextUrl)}`
+        : `?word=${encodeURIComponent(S.searchQuery)}`;
+      const resp = await fetch(`/pixiv/search/illusts${params}`);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      if (S.activeTab !== "search") return;
+      S.searchNextUrl = data.next_url ?? null;
+      for (const illust of data.illusts) {
+        if (S.searchMasonryCols?.length) masonryAdd(S.searchMasonryCols, createCard(ctx, illust));
+      }
+      if (pane && pane.scrollHeight <= pane.clientHeight + 50 && S.searchNextUrl !== null) {
+        setTimeout(() => loadSearchResults(ctx), 0);
+      }
+    } else {
+      // User/artist search
+      const params = nextUrl
+        ? `?next_url=${encodeURIComponent(nextUrl)}`
+        : `?word=${encodeURIComponent(S.searchQuery)}`;
+      const resp = await fetch(`/pixiv/search/users${params}`);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      if (S.activeTab !== "search") return;
+      S.searchNextUrl = data.next_url ?? null;
+      const gridEl = contentEl.querySelector(".px-grid");
+      for (const artist of data.artists) {
+        const item = document.createElement("div");
+        item.className = "px-artist-item";
+        const avatar = `/pixiv/image_proxy?url=${encodeURIComponent(artist.profile_image_urls.medium)}`;
+        item.innerHTML = `
+          <img class="px-artist-avatar" src="${avatar}" alt="" />
+          <span class="px-artist-name">${esc(artist.name)}</span>
+        `;
+        item.addEventListener("click", () => {
+          viewArtistFromCard(ctx, { id: artist.id, name: artist.name, is_followed: false });
+        });
+        gridEl?.appendChild(item);
+      }
+      if (pane && pane.scrollHeight <= pane.clientHeight + 50 && S.searchNextUrl !== null) {
+        setTimeout(() => loadSearchResults(ctx), 0);
+      }
+    }
+  } catch (e) {
+    pane?.insertAdjacentHTML("beforeend",
+      `<div class="px-error">搜索失败: ${esc(e.message)}</div>`);
+  } finally {
+    S.searchLoading = false;
+    if (loadEl) loadEl.style.display = "none";
+  }
 }
 
 // ── ComfyUI Extension Registration ───────────────────────────────────────────
