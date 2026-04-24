@@ -115,6 +115,7 @@ class PixivClient:
                     "large": i.image_urls.large,
                 },
                 "original_url": orig,
+                "is_bookmarked": bool(getattr(i, "is_bookmarked", False)),
                 "user": {
                     "id": i.user.id,
                     "name": i.user.name,

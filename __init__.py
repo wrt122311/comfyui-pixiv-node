@@ -122,6 +122,19 @@ try:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
+    @routes.post("/pixiv/bookmark")
+    async def pixiv_add_bookmark(request):
+        data = await request.json()
+        illust_id = data.get("illust_id")
+        if not illust_id:
+            return web.json_response({"error": "illust_id required"}, status=400)
+        try:
+            _client_instance.ensure_logged_in()
+            _client_instance.api.illust_bookmark_add(int(illust_id))
+            return web.json_response({"ok": True})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
     # ── Image Proxy ───────────────────────────────────────────────────────────
 
     @routes.get("/pixiv/image_proxy")

@@ -477,6 +477,32 @@ function createCard(ctx, illust) {
     <div class="px-card-title">${esc(illust.title)}</div>
   `;
 
+  // Bookmark button
+  const bmBtn = document.createElement("button");
+  bmBtn.className = "px-bookmark-btn" + (illust.is_bookmarked ? " bookmarked" : "");
+  bmBtn.textContent = illust.is_bookmarked ? "♥" : "♡";
+  bmBtn.title = illust.is_bookmarked ? "已收藏" : "收藏到 Pixiv";
+  bmBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (bmBtn.classList.contains("bookmarked")) return;
+    try {
+      const resp = await fetch("/pixiv/bookmark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ illust_id: illust.id }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        bmBtn.classList.add("bookmarked");
+        bmBtn.textContent = "♥";
+        bmBtn.title = "已收藏";
+        const cached = illustCache.get(id);
+        if (cached) cached.is_bookmarked = true;
+      }
+    } catch (_) {}
+  });
+  card.appendChild(bmBtn);
+
   const idx = S.selectedIds.indexOf(id);
   if (idx !== -1) {
     card.classList.add("selected");
