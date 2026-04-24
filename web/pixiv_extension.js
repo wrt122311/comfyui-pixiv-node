@@ -268,7 +268,6 @@ async function openMainBrowser(ctx) {
     <div class="px-grid-pane">
       <div class="px-grid"></div>
       <div class="px-loading" style="display:none">加载中...</div>
-      <div class="px-sentinel"></div>
     </div>
   `;
   const tab = S.activeTab;
@@ -295,19 +294,26 @@ async function fetchImages(tab, nextUrl) {
 async function loadMoreImages(ctx, tab) {
   const { contentEl, S } = ctx;
   if (S.loading) return;
+  if (S.activeTab !== tab) return;   // tab switched while async, abort
   const nextUrl = S.nextUrls[tab];
   if (nextUrl === null) return;
 
   S.loading = true;
+  const pane   = contentEl.querySelector(".px-grid-pane");
   const loadEl = contentEl.querySelector(".px-loading");
   if (loadEl) loadEl.style.display = "flex";
 
   try {
     const data = await fetchImages(tab, nextUrl);
+    if (S.activeTab !== tab) return;  // switched while awaiting
     S.nextUrls[tab] = data.next_url ?? null;
     const gridEl = contentEl.querySelector(".px-grid");
     for (const illust of data.illusts) {
       gridEl.appendChild(createCard(ctx, illust));
+    }
+    // If content still doesn't fill the pane, load next page automatically
+    if (pane && pane.scrollHeight <= pane.clientHeight + 50 && S.nextUrls[tab] !== null) {
+      setTimeout(() => loadMoreImages(ctx, tab), 0);
     }
   } catch (e) {
     contentEl.querySelector(".px-grid")
@@ -320,12 +326,13 @@ async function loadMoreImages(ctx, tab) {
 
 function setupInfiniteScroll(ctx, tab) {
   const { contentEl } = ctx;
-  const pane     = contentEl.querySelector(".px-grid-pane");
-  const sentinel = contentEl.querySelector(".px-sentinel");
-  if (!pane || !sentinel) return;
-  new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting) loadMoreImages(ctx, tab);
-  }, { root: pane, rootMargin: "200px" }).observe(sentinel);
+  const pane = contentEl.querySelector(".px-grid-pane");
+  if (!pane) return;
+  pane.addEventListener("scroll", () => {
+    if (pane.scrollHeight - pane.scrollTop - pane.clientHeight < 400) {
+      loadMoreImages(ctx, tab);
+    }
+  }, { passive: true });
 }
 
 // ── Cards ─────────────────────────────────────────────────────────────────────
@@ -485,7 +492,6 @@ async function loadArtistWorks(ctx, artistId) {
   worksPane.innerHTML = `
     <div class="px-grid"></div>
     <div class="px-loading" style="display:none">加载中...</div>
-    <div class="px-sentinel"></div>
   `;
   await loadMoreArtistWorks(ctx, artistId);
   setupArtistInfiniteScroll(ctx, artistId);
@@ -494,6 +500,7 @@ async function loadArtistWorks(ctx, artistId) {
 async function loadMoreArtistWorks(ctx, artistId) {
   const { contentEl, S } = ctx;
   if (S.loading) return;
+  if (S.activeArtistId !== artistId) return;  // artist switched, abort
   const nextUrl = S.artistNextUrl;
   if (nextUrl === null) return;
 
@@ -509,11 +516,16 @@ async function loadMoreArtistWorks(ctx, artistId) {
       const body = await resp.json().catch(() => ({}));
       throw new Error(body.error || `HTTP ${resp.status}`);
     }
-    const data  = await resp.json();
+    const data = await resp.json();
+    if (S.activeArtistId !== artistId) return;  // switched while awaiting
     S.artistNextUrl = data.next_url ?? null;
     const gridEl = worksPane?.querySelector(".px-grid");
     for (const illust of data.illusts) {
       gridEl?.appendChild(createCard(ctx, illust));
+    }
+    // Auto-fill if pane not yet scrollable
+    if (worksPane && worksPane.scrollHeight <= worksPane.clientHeight + 50 && S.artistNextUrl !== null) {
+      setTimeout(() => loadMoreArtistWorks(ctx, artistId), 0);
     }
   } catch (e) {
     worksPane?.querySelector(".px-grid")
@@ -527,11 +539,12 @@ async function loadMoreArtistWorks(ctx, artistId) {
 function setupArtistInfiniteScroll(ctx, artistId) {
   const { contentEl } = ctx;
   const worksPane = contentEl.querySelector(".px-artist-works-pane");
-  const sentinel  = worksPane?.querySelector(".px-sentinel");
-  if (!worksPane || !sentinel) return;
-  new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting) loadMoreArtistWorks(ctx, artistId);
-  }, { root: worksPane, rootMargin: "200px" }).observe(sentinel);
+  if (!worksPane) return;
+  worksPane.addEventListener("scroll", () => {
+    if (worksPane.scrollHeight - worksPane.scrollTop - worksPane.clientHeight < 400) {
+      loadMoreArtistWorks(ctx, artistId);
+    }
+  }, { passive: true });
 }
 
 // ── ComfyUI Extension Registration ───────────────────────────────────────────
