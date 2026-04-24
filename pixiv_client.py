@@ -115,8 +115,10 @@ class PixivClient:
     # ── Image download ────────────────────────────────────────────────────────
 
     def download_image_bytes(self, url: str) -> bytes:
-        # Use the API's own session so proxy/SSL settings are consistent
-        headers = {**self.api.additional_headers, "Referer": "https://www.pixiv.net/"}
+        headers = {
+            "Referer": "https://www.pixiv.net/",
+            "User-Agent": "PixivIOSApp/7.13.3 (iOS 14.6; iPhone13,2)",
+        }
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         return response.content
