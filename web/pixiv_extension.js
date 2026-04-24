@@ -128,38 +128,117 @@ function renderLoginPage(contentEl) {
     <div id="pixiv-login-page">
       <h3 style="color:#cba6f7;margin:0">登录 Pixiv</h3>
 
-      <div style="background:#181825;border:1px solid #3a3a5c;border-radius:6px;padding:14px 18px;max-width:480px;line-height:1.8;font-size:13px">
-        <b style="color:#cba6f7">操作步骤：</b>
-        <ol style="margin:8px 0 0 16px;padding:0;color:#cdd6f4">
-          <li>点击下方按钮，在<b>新标签页</b>完成 Pixiv 账号登录</li>
-          <li>登录成功后，浏览器会尝试打开 <code style="color:#a6e3a1">pixiv://</code> 链接<br>
-              此时页面可能<b>白屏</b>或显示"无法打开此页面"，这是<b>正常现象</b></li>
-          <li>查看浏览器<b>地址栏</b>，复制完整 URL（以 <code style="color:#a6e3a1">pixiv://account/login?code=</code> 开头）</li>
-          <li>将 URL 粘贴到下方输入框，点击确认</li>
-        </ol>
-        <p style="margin:8px 0 0;color:#f38ba8;font-size:12px">
-          ⚠️ 请勿粘贴登录前的跳转地址（以 https:// 开头的均为错误地址）
-        </p>
+      <div style="display:flex;gap:0;border:1px solid #3a3a5c;border-radius:6px;overflow:hidden;max-width:480px;width:100%">
+        <button class="pixiv-login-tab active" data-login-tab="token"
+          style="flex:1;padding:8px;background:#2a2a3e;border:none;color:#cba6f7;cursor:pointer;font-size:13px">
+          🔑 Refresh Token（推荐）
+        </button>
+        <button class="pixiv-login-tab" data-login-tab="oauth"
+          style="flex:1;padding:8px;background:transparent;border:none;color:#7f849c;cursor:pointer;font-size:13px">
+          🌐 OAuth 授权
+        </button>
       </div>
 
-      <button id="pixiv-login-btn">① 用浏览器登录 Pixiv</button>
+      <!-- Token 直接输入面板 -->
+      <div id="pixiv-panel-token" style="width:100%;max-width:480px;display:flex;flex-direction:column;gap:10px">
+        <div style="background:#181825;border:1px solid #3a3a5c;border-radius:6px;padding:12px 16px;font-size:13px;line-height:1.8">
+          <b style="color:#cba6f7">获取 Refresh Token 方法（推荐）：</b>
+          <ol style="margin:6px 0 0 16px;padding:0;color:#cdd6f4">
+            <li>在 ComfyUI Python 环境中安装工具：<br>
+                <code style="background:#0d1117;padding:2px 6px;border-radius:3px;color:#a6e3a1">pip install gppt</code></li>
+            <li>运行登录命令：<br>
+                <code style="background:#0d1117;padding:2px 6px;border-radius:3px;color:#a6e3a1">gppt login-headless -u 邮箱 -p 密码</code></li>
+            <li>复制输出中的 <code style="color:#a6e3a1">refresh_token</code> 值，粘贴到下方</li>
+          </ol>
+        </div>
+        <input id="pixiv-token-input" type="password" placeholder="粘贴 refresh_token 到此处"
+          style="width:100%;box-sizing:border-box;padding:8px 12px;background:#181825;border:1px solid #3a3a5c;border-radius:4px;color:#cdd6f4;font-size:13px" />
+        <button id="pixiv-save-token-btn"
+          style="padding:9px 20px;background:#cba6f7;color:#1e1e2e;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px">
+          保存并登录
+        </button>
+        <p id="pixiv-token-error" style="color:#f38ba8;display:none;margin:0;font-size:13px"></p>
+      </div>
 
-      <div id="pixiv-callback-section" style="display:none;width:100%;max-width:500px;flex-direction:column;gap:8px;align-items:center">
-        <p style="color:#a6e3a1;margin:0;font-size:13px">✓ 已打开授权页，完成登录后将地址栏 URL 粘贴到下方</p>
-        <input id="pixiv-redirect-input" type="text" placeholder="pixiv://account/login?code=..." />
-        <button id="pixiv-submit-code-btn">② 确认登录</button>
-        <p id="pixiv-login-error" style="color:#f38ba8;display:none;margin:0"></p>
+      <!-- OAuth 面板 -->
+      <div id="pixiv-panel-oauth" style="width:100%;max-width:480px;display:none;flex-direction:column;gap:10px">
+        <div style="background:#181825;border:1px solid #3a3a5c;border-radius:6px;padding:12px 16px;font-size:13px;line-height:1.8">
+          <b style="color:#cba6f7">操作步骤：</b>
+          <ol style="margin:6px 0 0 16px;padding:0;color:#cdd6f4">
+            <li>点击按钮，在新标签页完成 Pixiv 账号登录</li>
+            <li>登录后浏览器可能白屏，查看<b>地址栏</b>是否出现
+                <code style="color:#a6e3a1">pixiv://account/login?code=</code> 开头的 URL</li>
+            <li>若地址栏有此 URL，复制并粘贴到下方输入框</li>
+            <li>若地址栏无此 URL，请改用上方"Refresh Token"方式</li>
+          </ol>
+        </div>
+        <button id="pixiv-login-btn"
+          style="padding:9px 20px;background:#cba6f7;color:#1e1e2e;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px">
+          ① 用浏览器登录 Pixiv
+        </button>
+        <div id="pixiv-callback-section" style="display:none;width:100%;flex-direction:column;gap:8px">
+          <p style="color:#a6e3a1;margin:0;font-size:13px">✓ 已打开授权页，完成登录后将地址栏 URL 粘贴到下方</p>
+          <input id="pixiv-redirect-input" type="text" placeholder="pixiv://account/login?code=..."
+            style="width:100%;box-sizing:border-box;padding:8px 12px;background:#181825;border:1px solid #3a3a5c;border-radius:4px;color:#cdd6f4;font-size:13px" />
+          <button id="pixiv-submit-code-btn"
+            style="padding:8px 20px;background:#a6e3a1;color:#1e1e2e;border:none;border-radius:4px;cursor:pointer;font-weight:bold">
+            ② 确认登录
+          </button>
+        </div>
+        <p id="pixiv-oauth-error" style="color:#f38ba8;display:none;margin:0;font-size:13px"></p>
       </div>
     </div>
   `;
 
+  // Login tab switching
+  document.querySelectorAll(".pixiv-login-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".pixiv-login-tab").forEach(b => {
+        b.style.background = "transparent";
+        b.style.color = "#7f849c";
+        b.classList.remove("active");
+      });
+      btn.style.background = "#2a2a3e";
+      btn.style.color = "#cba6f7";
+      btn.classList.add("active");
+      const tab = btn.dataset.loginTab;
+      document.getElementById("pixiv-panel-token").style.display = tab === "token" ? "flex" : "none";
+      document.getElementById("pixiv-panel-oauth").style.display = tab === "oauth" ? "flex" : "none";
+    });
+  });
+
+  // ── Token direct input ────────────────────────────────────────────────────
+  document.getElementById("pixiv-save-token-btn").addEventListener("click", async () => {
+    const token = document.getElementById("pixiv-token-input").value.trim();
+    const errEl = document.getElementById("pixiv-token-error");
+    if (!token) return;
+    errEl.style.display = "none";
+    try {
+      const resp = await fetch("/pixiv/auth/set_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: token }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        openMainBrowser(contentEl);
+      } else {
+        errEl.textContent = data.error || "Token 无效，请检查后重试";
+        errEl.style.display = "block";
+      }
+    } catch (e) {
+      errEl.textContent = "网络错误：" + e.message;
+      errEl.style.display = "block";
+    }
+  });
+
+  // ── OAuth flow ────────────────────────────────────────────────────────────
   document.getElementById("pixiv-login-btn").addEventListener("click", async () => {
     try {
       const resp = await fetch("/pixiv/auth/login", { method: "POST" });
       const data = await resp.json();
       window.open(data.auth_url, "_blank");
-      const section = document.getElementById("pixiv-callback-section");
-      section.style.display = "flex";
+      document.getElementById("pixiv-callback-section").style.display = "flex";
     } catch (e) {
       console.error("[PixivBrowser] Login init failed:", e);
     }
@@ -167,16 +246,13 @@ function renderLoginPage(contentEl) {
 
   document.getElementById("pixiv-submit-code-btn").addEventListener("click", async () => {
     const redirectUrl = document.getElementById("pixiv-redirect-input").value.trim();
-    const errEl = document.getElementById("pixiv-login-error");
+    const errEl = document.getElementById("pixiv-oauth-error");
     if (!redirectUrl) return;
-
-    // Client-side validation: must start with pixiv://
     if (!redirectUrl.startsWith("pixiv://")) {
-      errEl.textContent = "请粘贴以 pixiv:// 开头的地址，而非登录前的跳转地址";
+      errEl.textContent = "请粘贴以 pixiv:// 开头的地址，当前粘贴的是登录前的跳转地址";
       errEl.style.display = "block";
       return;
     }
-
     errEl.style.display = "none";
     try {
       const resp = await fetch("/pixiv/auth/callback", {

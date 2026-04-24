@@ -50,6 +50,20 @@ try:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=400)
 
+    @routes.post("/pixiv/auth/set_token")
+    async def pixiv_set_token(request):
+        data = await request.json()
+        token = data.get("refresh_token", "").strip()
+        if not token:
+            return web.json_response({"error": "refresh_token 不能为空"}, status=400)
+        try:
+            _client_instance.api.auth(refresh_token=token)
+            _client_instance._logged_in = True
+            _config.save_refresh_token(token)
+            return web.json_response({"ok": True})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+
     # ── Content ───────────────────────────────────────────────────────────────
 
     @routes.get("/pixiv/recommended")
