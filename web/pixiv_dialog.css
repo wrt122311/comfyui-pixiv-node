@@ -168,6 +168,38 @@
   text-overflow: ellipsis;
 }
 
+#pixiv-clear-all-btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid #45475a;
+  color: #7f849c;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+#pixiv-clear-all-btn:hover { color: #f38ba8; border-color: #f38ba8; }
+
+.pixiv-card-remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(243, 139, 168, 0.85);
+  color: #1e1e2e;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+.pixiv-card-remove-btn:hover { background: #f38ba8; }
+
 .pixiv-seq-badge {
   position: absolute;
   top: 4px;

@@ -11,6 +11,9 @@ const state = {
   artistNextUrl: null,
 };
 
+// Persists across modal opens so the "已选" panel can show thumbnails
+const illustCache = new Map();
+
 // ── CSS injection ─────────────────────────────────────────────────────────────
 
 function injectCSS() {
@@ -34,6 +37,9 @@ function escapeHtml(str) {
 function updateSelectedCount() {
   const el = document.getElementById("pixiv-selected-count");
   if (el) el.textContent = `已选 ${state.selectedIds.length} 张`;
+  const tabEl = document.getElementById("pixiv-selected-tab");
+  if (tabEl) tabEl.textContent = state.selectedIds.length > 0
+    ? `已选 (${state.selectedIds.length})` : "已选";
 }
 
 // ── Modal DOM ─────────────────────────────────────────────────────────────────
@@ -46,6 +52,7 @@ function buildModal() {
       <div id="pixiv-modal-header">
         <h2>📷 Pixiv Browser</h2>
         <span id="pixiv-selected-count">已选 0 张</span>
+        <button id="pixiv-clear-all-btn" title="清除全部选择">清除全部</button>
         <button id="pixiv-close-btn" title="关闭">✕</button>
       </div>
       <div id="pixiv-tabs">
@@ -53,6 +60,7 @@ function buildModal() {
         <button class="pixiv-tab" data-tab="ranking">排行榜</button>
         <button class="pixiv-tab" data-tab="bookmarks">收藏</button>
         <button class="pixiv-tab" data-tab="artists">画师</button>
+        <button class="pixiv-tab" data-tab="selected" id="pixiv-selected-tab">已选</button>
       </div>
       <div id="pixiv-content"></div>
       <div id="pixiv-modal-footer">
@@ -97,6 +105,19 @@ async function openModal(node, idsWidget) {
   document.getElementById("pixiv-confirm-btn").addEventListener("click", () => {
     if (idsWidget) idsWidget.value = state.selectedIds.join(",");
     closeModal();
+  });
+
+  document.getElementById("pixiv-clear-all-btn").addEventListener("click", () => {
+    state.selectedIds.length = 0;
+    updateSelectedCount();
+    if (state.activeTab === "selected") {
+      renderSelectedPane(contentEl);
+    } else {
+      document.querySelectorAll(".pixiv-card.selected").forEach(card => {
+        card.classList.remove("selected");
+        card.querySelector(".pixiv-seq-badge")?.remove();
+      });
+    }
   });
 
   // Tab buttons
@@ -289,6 +310,10 @@ async function openMainBrowser(contentEl) {
     renderArtistPane(contentEl);
     return;
   }
+  if (state.activeTab === "selected") {
+    renderSelectedPane(contentEl);
+    return;
+  }
   contentEl.innerHTML = `
     <div id="pixiv-grid-pane">
       <div class="pixiv-grid" id="pixiv-image-grid"></div>
@@ -347,6 +372,7 @@ function appendIllusts(illusts, gridEl) {
 }
 
 function createCard(illust) {
+  illustCache.set(String(illust.id), illust);
   const card = document.createElement("div");
   card.className = "pixiv-card";
   card.dataset.id = String(illust.id);
@@ -397,6 +423,65 @@ function setupInfiniteScroll(tab) {
   new IntersectionObserver(entries => {
     if (entries[0].isIntersecting) loadMoreImages(tab);
   }, { rootMargin: "200px" }).observe(sentinel);
+}
+
+// ── Selected pane ─────────────────────────────────────────────────────────────
+
+function renderSelectedPane(contentEl) {
+  contentEl.innerHTML = `
+    <div id="pixiv-grid-pane">
+      <div class="pixiv-grid" id="pixiv-selected-grid"></div>
+    </div>
+  `;
+  const grid = document.getElementById("pixiv-selected-grid");
+
+  if (state.selectedIds.length === 0) {
+    grid.innerHTML = `<div style="color:#7f849c;padding:40px;text-align:center;grid-column:1/-1">尚未选择任何图片</div>`;
+    return;
+  }
+
+  for (const id of [...state.selectedIds]) {
+    const illust = illustCache.get(id);
+    const card = document.createElement("div");
+    card.className = "pixiv-card selected";
+    card.dataset.id = id;
+
+    if (illust) {
+      const thumb = `/pixiv/image_proxy?url=${encodeURIComponent(illust.image_urls.medium)}`;
+      card.innerHTML = `
+        <img src="${thumb}" alt="${escapeHtml(illust.title)}" loading="lazy" />
+        <div class="pixiv-card-title">${escapeHtml(illust.title)}</div>
+        <div class="pixiv-seq-badge">${state.selectedIds.indexOf(id) + 1}</div>
+        <button class="pixiv-card-remove-btn" title="取消选择">✕</button>
+      `;
+    } else {
+      card.innerHTML = `
+        <div style="width:100%;aspect-ratio:1;background:#313244;display:flex;align-items:center;justify-content:center;color:#7f849c;font-size:12px">${id}</div>
+        <div class="pixiv-card-title">ID: ${escapeHtml(id)}</div>
+        <button class="pixiv-card-remove-btn" title="取消选择">✕</button>
+      `;
+    }
+
+    card.querySelector(".pixiv-card-remove-btn").addEventListener("click", () => {
+      const idx = state.selectedIds.indexOf(id);
+      if (idx !== -1) {
+        state.selectedIds.splice(idx, 1);
+        card.remove();
+        updateSelectedCount();
+        if (state.selectedIds.length === 0) {
+          grid.innerHTML = `<div style="color:#7f849c;padding:40px;text-align:center;grid-column:1/-1">尚未选择任何图片</div>`;
+        } else {
+          // Update remaining badge numbers
+          grid.querySelectorAll(".pixiv-card").forEach(c => {
+            const badge = c.querySelector(".pixiv-seq-badge");
+            if (badge) badge.textContent = state.selectedIds.indexOf(c.dataset.id) + 1;
+          });
+        }
+      }
+    });
+
+    grid.appendChild(card);
+  }
 }
 
 // ── Artist tab ────────────────────────────────────────────────────────────────
