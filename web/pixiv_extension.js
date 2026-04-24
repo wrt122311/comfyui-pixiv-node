@@ -250,10 +250,11 @@ function renderLoginPage(ctx) {
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 function switchTab(ctx, tabName) {
-  // Save recommended pane DOM before navigating away (preserves scroll + loaded images)
-  if (ctx.S.activeTab === "recommended" && tabName !== "recommended") {
+  // Save current pane DOM before switching (preserves scroll + loaded content)
+  const cur = ctx.S.activeTab;
+  if (cur !== tabName && cur !== "selected") {
     const el = ctx.contentEl.firstElementChild;
-    if (el) ctx.S.cachedPanes["recommended"] = el;
+    if (el) ctx.S.cachedPanes[cur] = el;
   }
   ctx.S.activeTab = tabName;
   ctx.container.querySelectorAll(".px-tab").forEach(btn => {
@@ -261,21 +262,22 @@ function switchTab(ctx, tabName) {
   });
   if (tabName === "selected") {
     renderSelectedPane(ctx);
-  } else if (tabName === "artists") {
-    renderArtistPane(ctx);
-  } else if (tabName === "ranking") {
-    renderRankingPane(ctx);
-  } else if (tabName === "recommended") {
-    const cached = ctx.S.cachedPanes["recommended"];
+  } else {
+    const cached = ctx.S.cachedPanes[tabName];
     if (cached) {
       ctx.contentEl.innerHTML = "";
       ctx.contentEl.appendChild(cached);
     } else {
-      renderRecommendedPane(ctx);
+      renderTabPane(ctx, tabName);
     }
-  } else {
-    openMainBrowser(ctx);
   }
+}
+
+function renderTabPane(ctx, tabName) {
+  if (tabName === "recommended")  renderRecommendedPane(ctx);
+  else if (tabName === "ranking") renderRankingPane(ctx);
+  else if (tabName === "bookmarks") renderBookmarksPane(ctx);
+  else if (tabName === "artists") renderArtistPane(ctx);
 }
 
 // ── Recommended pane (cached) ─────────────────────────────────────────────────
@@ -305,6 +307,33 @@ function renderRecommendedPane(ctx) {
   setupInfiniteScroll(ctx, "recommended");
 }
 
+// ── Bookmarks pane ────────────────────────────────────────────────────────────
+function renderBookmarksPane(ctx) {
+  const { contentEl, S } = ctx;
+  contentEl.innerHTML = `
+    <div class="px-recommended-pane">
+      <div class="px-rank-bar">
+        <span style="flex:1;color:#7f849c;font-size:11px">我的收藏</span>
+        <button class="px-refresh-btn">↻ 刷新</button>
+      </div>
+      <div class="px-rank-grid-wrap">
+        <div class="px-grid-pane">
+          <div class="px-grid"></div>
+          <div class="px-loading" style="display:none">加载中...</div>
+        </div>
+      </div>
+    </div>
+  `;
+  contentEl.querySelector(".px-refresh-btn").addEventListener("click", () => {
+    delete S.cachedPanes["bookmarks"];
+    S.nextUrls["bookmarks"] = undefined;
+    renderBookmarksPane(ctx);
+  });
+  S.nextUrls["bookmarks"] = undefined;
+  loadMoreImages(ctx, "bookmarks");
+  setupInfiniteScroll(ctx, "bookmarks");
+}
+
 // ── Ranking pane ──────────────────────────────────────────────────────────────
 const RANKING_MODES = [
   { id: "day",           label: "日榜" },
@@ -324,6 +353,8 @@ function renderRankingPane(ctx) {
         ${RANKING_MODES.map(m =>
           `<button class="px-rank-btn${S.rankingMode === m.id ? " active" : ""}" data-mode="${m.id}">${m.label}</button>`
         ).join("")}
+        <span style="flex:1"></span>
+        <button class="px-refresh-btn">↻ 刷新</button>
       </div>
       <div class="px-rank-grid-wrap">
         <div class="px-grid-pane">
@@ -344,6 +375,11 @@ function renderRankingPane(ctx) {
       if (grid) grid.innerHTML = "";
       loadMoreImages(ctx, "ranking");
     });
+  });
+  contentEl.querySelector(".px-refresh-btn").addEventListener("click", () => {
+    delete S.cachedPanes["ranking"];
+    S.nextUrls["ranking"] = undefined;
+    renderRankingPane(ctx);
   });
   S.nextUrls["ranking"] = undefined;
   loadMoreImages(ctx, "ranking");
@@ -531,15 +567,26 @@ function renderSelectedPane(ctx) {
 
 // ── Artist tab ────────────────────────────────────────────────────────────────
 async function renderArtistPane(ctx) {
-  const { contentEl } = ctx;
+  const { contentEl, S } = ctx;
   contentEl.innerHTML = `
-    <div class="px-artist-pane">
-      <div class="px-artist-list"><div class="px-loading">加载中...</div></div>
-      <div class="px-artist-works-pane">
-        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#7f849c;font-size:12px">请从左侧选择画师</div>
+    <div class="px-artist-container">
+      <div class="px-rank-bar">
+        <span style="flex:1;color:#7f849c;font-size:11px">关注的画师</span>
+        <button class="px-refresh-btn">↻ 刷新</button>
+      </div>
+      <div class="px-artist-pane">
+        <div class="px-artist-list"><div class="px-loading">加载中...</div></div>
+        <div class="px-artist-works-pane">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#7f849c;font-size:12px">请从左侧选择画师</div>
+        </div>
       </div>
     </div>
   `;
+  contentEl.querySelector(".px-refresh-btn").addEventListener("click", () => {
+    delete S.cachedPanes["artists"];
+    S.activeArtistId = null;
+    renderArtistPane(ctx);
+  });
   try {
     const resp = await fetch("/pixiv/bookmarked_artists");
     if (!resp.ok) {

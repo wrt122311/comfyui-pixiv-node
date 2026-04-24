@@ -249,6 +249,14 @@
 }
 
 /* Artist pane */
+.px-artist-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
 .px-artist-pane {
   display: flex;
   flex: 1;
