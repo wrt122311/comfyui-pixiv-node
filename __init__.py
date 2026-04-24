@@ -57,8 +57,10 @@ try:
         if not token:
             return web.json_response({"error": "refresh_token 不能为空"}, status=400)
         try:
+            import time
             _client_instance.api.auth(refresh_token=token)
             _client_instance._logged_in = True
+            _client_instance._auth_time = time.time()
             _config.save_refresh_token(token)
             return web.json_response({"ok": True})
         except Exception as e:

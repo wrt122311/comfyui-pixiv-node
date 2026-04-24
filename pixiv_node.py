@@ -35,6 +35,7 @@ class PixivBrowser:
         ids = [x.strip() for x in artwork_ids.split(",") if x.strip()]
         tensors = []
 
+        errors = []
         for artwork_id in ids:
             try:
                 url = client.get_original_url(int(artwork_id))
@@ -43,9 +44,12 @@ class PixivBrowser:
                 arr = np.array(img, dtype=np.float32) / 255.0
                 tensors.append(torch.from_numpy(arr))
             except Exception as e:
-                print(f"[PixivBrowser] Skipping {artwork_id}: {e}")
+                msg = f"{artwork_id}: {e}"
+                print(f"[PixivBrowser] Skipping {msg}")
+                errors.append(msg)
 
         if not tensors:
-            raise ValueError("所有图片下载失败，请检查网络或重新选择")
+            detail = "\n".join(errors[:5])
+            raise ValueError(f"所有图片下载失败:\n{detail}")
 
         return (torch.stack(tensors),)

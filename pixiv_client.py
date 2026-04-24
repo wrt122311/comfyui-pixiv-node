@@ -2,6 +2,7 @@ import hashlib
 import secrets
 import base64
 import re
+import time
 import requests
 from pixivpy3 import AppPixivAPI
 
@@ -11,6 +12,7 @@ class PixivClient:
         self.config = config
         self.api = AppPixivAPI()
         self._logged_in = False
+        self._auth_time = 0.0
 
     # ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -40,16 +42,18 @@ class PixivClient:
         token = self.api.refresh_token
         self.config.save_refresh_token(token)
         self._logged_in = True
+        self._auth_time = time.time()
         return token
 
     def ensure_logged_in(self):
-        if self._logged_in:
-            return
-        token = self.config.get_refresh_token()
+        token = self.api.refresh_token or self.config.get_refresh_token()
         if not token:
             raise RuntimeError("未登录，请先在弹窗中登录 Pixiv")
-        self.api.auth(refresh_token=token)
-        self._logged_in = True
+        # Access token expires after 3600s; refresh with a 5-min buffer
+        if not self._logged_in or time.time() - self._auth_time > 3300:
+            self.api.auth(refresh_token=token)
+            self._logged_in = True
+            self._auth_time = time.time()
 
     # ── Data fetch ────────────────────────────────────────────────────────────
 
@@ -111,11 +115,9 @@ class PixivClient:
     # ── Image download ────────────────────────────────────────────────────────
 
     def download_image_bytes(self, url: str) -> bytes:
-        response = requests.get(
-            url,
-            headers={"Referer": "https://www.pixiv.net/"},
-            timeout=30,
-        )
+        # Use the API's own session so proxy/SSL settings are consistent
+        headers = {**self.api.additional_headers, "Referer": "https://www.pixiv.net/"}
+        response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         return response.content
 
