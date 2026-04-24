@@ -26,7 +26,8 @@ class PixivClient:
 
     def _next_qs(self, next_url: str) -> dict:
         parsed = urlparse(next_url)
-        return {k: v[0] for k, v in parse_qs(parsed.query).items()}
+        # Filter out array-style keys like "viewed[]" — invalid as Python kwargs
+        return {k: v[0] for k, v in parse_qs(parsed.query).items() if k.isidentifier()}
 
     def get_login_url(self, code_challenge: str) -> str:
         return (
