@@ -37,6 +37,7 @@ function initNodeBrowser(container, idsWidget) {
       activeArtistId: null,
       artistNextUrl: null,
       rankingMode: "day",
+      cachedPanes: {},
     },
   };
 
@@ -113,7 +114,7 @@ async function checkLoginAndRender(ctx) {
     if (!status.logged_in) {
       renderLoginPage(ctx);
     } else {
-      openMainBrowser(ctx);
+      renderRecommendedPane(ctx);
     }
   } catch (e) {
     ctx.contentEl.innerHTML =
@@ -196,7 +197,7 @@ function renderLoginPage(ctx) {
       });
       const data = await resp.json();
       if (data.ok) {
-        openMainBrowser(ctx);
+        renderRecommendedPane(ctx);
       } else {
         errEl.textContent = data.error || "Token 无效，请检查后重试";
         errEl.style.display = "block";
@@ -235,7 +236,7 @@ function renderLoginPage(ctx) {
       });
       const data = await resp.json();
       if (data.ok) {
-        openMainBrowser(ctx);
+        renderRecommendedPane(ctx);
       } else {
         errEl.textContent = data.error || "登录失败，请重试";
         errEl.style.display = "block";
@@ -249,6 +250,11 @@ function renderLoginPage(ctx) {
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 function switchTab(ctx, tabName) {
+  // Save recommended pane DOM before navigating away (preserves scroll + loaded images)
+  if (ctx.S.activeTab === "recommended" && tabName !== "recommended") {
+    const el = ctx.contentEl.firstElementChild;
+    if (el) ctx.S.cachedPanes["recommended"] = el;
+  }
   ctx.S.activeTab = tabName;
   ctx.container.querySelectorAll(".px-tab").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tabName);
@@ -259,9 +265,44 @@ function switchTab(ctx, tabName) {
     renderArtistPane(ctx);
   } else if (tabName === "ranking") {
     renderRankingPane(ctx);
+  } else if (tabName === "recommended") {
+    const cached = ctx.S.cachedPanes["recommended"];
+    if (cached) {
+      ctx.contentEl.innerHTML = "";
+      ctx.contentEl.appendChild(cached);
+    } else {
+      renderRecommendedPane(ctx);
+    }
   } else {
     openMainBrowser(ctx);
   }
+}
+
+// ── Recommended pane (cached) ─────────────────────────────────────────────────
+function renderRecommendedPane(ctx) {
+  const { contentEl, S } = ctx;
+  contentEl.innerHTML = `
+    <div class="px-recommended-pane">
+      <div class="px-rank-bar">
+        <span style="flex:1;color:#7f849c;font-size:11px">为你推荐</span>
+        <button class="px-refresh-btn">↻ 刷新</button>
+      </div>
+      <div class="px-rank-grid-wrap">
+        <div class="px-grid-pane">
+          <div class="px-grid"></div>
+          <div class="px-loading" style="display:none">加载中...</div>
+        </div>
+      </div>
+    </div>
+  `;
+  contentEl.querySelector(".px-refresh-btn").addEventListener("click", () => {
+    delete S.cachedPanes["recommended"];
+    S.nextUrls["recommended"] = undefined;
+    renderRecommendedPane(ctx);
+  });
+  S.nextUrls["recommended"] = undefined;
+  loadMoreImages(ctx, "recommended");
+  setupInfiniteScroll(ctx, "recommended");
 }
 
 // ── Ranking pane ──────────────────────────────────────────────────────────────

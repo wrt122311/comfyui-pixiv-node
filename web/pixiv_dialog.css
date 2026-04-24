@@ -190,6 +190,26 @@
 .px-login-tab.active { background: #2a2a3e; color: #cba6f7; }
 .px-login-tab:hover { color: #cdd6f4; }
 
+/* Recommended / Ranking pane shared layout */
+.px-recommended-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.px-refresh-btn {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid #45475a;
+  color: #7f849c;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.px-refresh-btn:hover { color: #cba6f7; border-color: #cba6f7; }
+
 /* Ranking pane */
 .px-ranking-pane {
   display: flex;
