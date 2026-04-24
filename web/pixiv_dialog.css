@@ -93,9 +93,8 @@
 }
 
 .px-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 6px;
+  column-width: 128px;
+  column-gap: 2px;
 }
 
 /* Cards */
@@ -107,14 +106,17 @@
   border: 2px solid transparent;
   background: #181825;
   transition: border-color 0.15s;
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin-bottom: 2px;
 }
 .px-card:hover { border-color: #7f849c; }
 .px-card.selected { border-color: #cba6f7; }
 
 .px-card img {
   width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
+  height: auto;
   display: block;
 }
 

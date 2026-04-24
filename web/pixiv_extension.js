@@ -55,7 +55,6 @@ function initNodeBrowser(container, idsWidget) {
     <div class="px-footer">
       <span class="px-count">已选 0 张</span>
       <button class="px-clear-btn">清除全部</button>
-      <button class="px-confirm-btn">✓ 确认选择</button>
     </div>
   `;
 
@@ -74,6 +73,7 @@ function initNodeBrowser(container, idsWidget) {
   // Clear all
   container.querySelector(".px-clear-btn").addEventListener("click", () => {
     ctx.S.selectedIds.length = 0;
+    commitSelection(ctx);
     updateCount(ctx);
     if (ctx.S.activeTab === "selected") {
       renderSelectedPane(ctx);
@@ -85,18 +85,16 @@ function initNodeBrowser(container, idsWidget) {
     }
   });
 
-  // Confirm → write ids to hidden widget so node can execute
-  container.querySelector(".px-confirm-btn").addEventListener("click", () => {
-    if (ctx.idsWidget) {
-      ctx.idsWidget.value = ctx.S.selectedIds.map(id => {
-        const url = illustCache.get(id)?.original_url || "";
-        return url ? `${id}|${url}` : id;
-      }).join(",");
-    }
-  });
-
   updateCount(ctx);
   checkLoginAndRender(ctx);
+}
+
+function commitSelection(ctx) {
+  if (!ctx.idsWidget) return;
+  ctx.idsWidget.value = ctx.S.selectedIds.map(id => {
+    const url = illustCache.get(id)?.original_url || "";
+    return url ? `${id}|${url}` : id;
+  }).join(",");
 }
 
 function updateCount(ctx) {
@@ -542,6 +540,7 @@ function toggleCard(ctx, card, id) {
     rebadgeAll(ctx);
   }
   updateCount(ctx);
+  commitSelection(ctx);
 }
 
 function rebadgeAll(ctx) {
@@ -590,6 +589,7 @@ function renderSelectedPane(ctx) {
         S.selectedIds.splice(i, 1);
         card.remove();
         updateCount(ctx);
+        commitSelection(ctx);
         if (S.selectedIds.length === 0) {
           grid.innerHTML = `<div class="px-empty">尚未选择任何图片</div>`;
         } else {
