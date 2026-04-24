@@ -92,25 +92,30 @@ class PixivClient:
         return self._fmt_illusts(self.api.user_illusts(**kwargs))
 
     def _fmt_illusts(self, result):
-        return {
-            "illusts": [
-                {
-                    "id": i.id,
-                    "title": i.title,
-                    "image_urls": {
-                        "medium": i.image_urls.medium,
-                        "large": i.image_urls.large,
-                    },
-                    "user": {
-                        "id": i.user.id,
-                        "name": i.user.name,
-                        "profile_image_urls": {"medium": i.user.profile_image_urls.medium},
-                    },
-                }
-                for i in result.illusts
-            ],
-            "next_url": result.next_url,
-        }
+        illusts = []
+        for i in result.illusts:
+            # Extract original URL from browse data to avoid extra illust_detail calls later
+            try:
+                orig = (dict(i.meta_single_page) or {}).get("original_image_url") or ""
+                if not orig and i.meta_pages:
+                    orig = i.meta_pages[0].image_urls.original or ""
+            except Exception:
+                orig = ""
+            illusts.append({
+                "id": i.id,
+                "title": i.title,
+                "image_urls": {
+                    "medium": i.image_urls.medium,
+                    "large": i.image_urls.large,
+                },
+                "original_url": orig,
+                "user": {
+                    "id": i.user.id,
+                    "name": i.user.name,
+                    "profile_image_urls": {"medium": i.user.profile_image_urls.medium},
+                },
+            })
+        return {"illusts": illusts, "next_url": result.next_url}
 
     # ── Image download ────────────────────────────────────────────────────────
 

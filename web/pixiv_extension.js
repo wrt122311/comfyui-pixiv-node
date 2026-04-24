@@ -103,7 +103,13 @@ async function openModal(node, idsWidget) {
   document.getElementById("pixiv-close-btn").addEventListener("click", closeModal);
   document.getElementById("pixiv-cancel-btn").addEventListener("click", closeModal);
   document.getElementById("pixiv-confirm-btn").addEventListener("click", () => {
-    if (idsWidget) idsWidget.value = state.selectedIds.join(",");
+    if (idsWidget) {
+      // Format: "id|originalUrl,id|originalUrl,..." so the node can skip illust_detail calls
+      idsWidget.value = state.selectedIds.map(id => {
+        const url = illustCache.get(id)?.original_url || "";
+        return url ? `${id}|${url}` : id;
+      }).join(",");
+    }
     closeModal();
   });
 

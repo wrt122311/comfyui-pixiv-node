@@ -32,17 +32,31 @@ class PixivBrowser:
             raise ValueError("请先在弹窗中选择图片")
 
         client = _get_client()
-        ids = [x.strip() for x in artwork_ids.split(",") if x.strip()]
-        tensors = []
 
+        # Parse "id|url,id|url,..." or legacy "id,id,..." format
+        items = []
+        for token in artwork_ids.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if "|" in token:
+                artwork_id, url = token.split("|", 1)
+                items.append((artwork_id.strip(), url.strip()))
+            else:
+                items.append((token, ""))
+
+        print(f"[PixivBrowser] Downloading {len(items)} image(s)")
+        tensors = []
         errors = []
         images = []
-        for artwork_id in ids:
+        for artwork_id, url in items:
             try:
-                url = client.get_original_url(int(artwork_id))
+                if not url:
+                    url = client.get_original_url(int(artwork_id))
                 raw = client.download_image_bytes(url)
                 img = Image.open(io.BytesIO(raw)).convert("RGB")
                 images.append(img)
+                print(f"[PixivBrowser] Downloaded {artwork_id}")
             except Exception as e:
                 msg = f"{artwork_id}: {e}"
                 print(f"[PixivBrowser] Skipping {msg}")
