@@ -110,6 +110,8 @@ class PixivClient:
             illusts.append({
                 "id": i.id,
                 "title": i.title,
+                "width": i.width,
+                "height": i.height,
                 "image_urls": {
                     "medium": i.image_urls.medium,
                     "large": i.image_urls.large,

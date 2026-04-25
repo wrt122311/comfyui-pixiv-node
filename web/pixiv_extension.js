@@ -507,8 +507,9 @@ function createCard(ctx, illust) {
   card.dataset.id = id;
 
   const thumb = `/pixiv/image_proxy?url=${encodeURIComponent(illust.image_urls.medium)}`;
+  const ratio = (illust.width && illust.height) ? `aspect-ratio:${illust.width}/${illust.height};` : "";
   card.innerHTML = `
-    <img src="${thumb}" alt="${esc(illust.title)}" loading="lazy" />
+    <img src="${thumb}" alt="${esc(illust.title)}" loading="lazy" style="${ratio}width:100%;height:auto;display:block" />
     <div class="px-card-title">${esc(illust.title)}</div>
   `;
 
@@ -625,8 +626,9 @@ function renderSelectedPane(ctx) {
 
     if (illust) {
       const thumb = `/pixiv/image_proxy?url=${encodeURIComponent(illust.image_urls.medium)}`;
+      const ratio = (illust.width && illust.height) ? `aspect-ratio:${illust.width}/${illust.height};` : "";
       card.innerHTML = `
-        <img src="${thumb}" alt="${esc(illust.title)}" loading="lazy" />
+        <img src="${thumb}" alt="${esc(illust.title)}" loading="lazy" style="${ratio}width:100%;height:auto;display:block" />
         <div class="px-card-title">${esc(illust.title)}</div>
         <div class="px-seq-badge">${S.selectedIds.indexOf(id) + 1}</div>
         <button class="px-remove-btn" title="取消选择">✕</button>
