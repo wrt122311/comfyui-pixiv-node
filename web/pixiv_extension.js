@@ -72,6 +72,7 @@ function initNodeBrowser(container, idsWidget) {
       searchNextUrl: null,
       searchMasonryCols: null,
       searchLoading: false,
+      multiSelect: false,
     },
   };
 
@@ -88,6 +89,7 @@ function initNodeBrowser(container, idsWidget) {
     <div class="px-content"></div>
     <div class="px-footer">
       <span class="px-count">已选 0 张</span>
+      <button class="px-multisel-btn">多选</button>
       <button class="px-clear-btn">清除全部</button>
     </div>
   `;
@@ -102,6 +104,14 @@ function initNodeBrowser(container, idsWidget) {
   // Tab buttons
   container.querySelectorAll(".px-tab").forEach(btn => {
     btn.addEventListener("click", () => switchTab(ctx, btn.dataset.tab));
+  });
+
+  // Multi-select toggle
+  container.querySelector(".px-multisel-btn").addEventListener("click", () => {
+    ctx.S.multiSelect = !ctx.S.multiSelect;
+    const btn = container.querySelector(".px-multisel-btn");
+    btn.classList.toggle("active", ctx.S.multiSelect);
+    btn.textContent = ctx.S.multiSelect ? "多选 ✓" : "多选";
   });
 
   // Clear all
@@ -553,17 +563,32 @@ function createCard(ctx, illust) {
 
 function toggleCard(ctx, card, id) {
   const { S } = ctx;
-  const idx = S.selectedIds.indexOf(id);
-  if (idx === -1) {
-    S.selectedIds.push(id);
-    card.classList.add("selected");
-    card.insertAdjacentHTML("beforeend",
-      `<div class="px-seq-badge">${S.selectedIds.length}</div>`);
+  if (!S.multiSelect) {
+    // Single-select: clicking a selected card deselects it; otherwise replace selection
+    const wasSelected = S.selectedIds.includes(id);
+    ctx.contentEl.querySelectorAll(".px-card.selected").forEach(c => {
+      c.classList.remove("selected");
+      c.querySelector(".px-seq-badge")?.remove();
+    });
+    S.selectedIds.length = 0;
+    if (!wasSelected) {
+      S.selectedIds.push(id);
+      card.classList.add("selected");
+      card.insertAdjacentHTML("beforeend", `<div class="px-seq-badge">1</div>`);
+    }
   } else {
-    S.selectedIds.splice(idx, 1);
-    card.classList.remove("selected");
-    card.querySelector(".px-seq-badge")?.remove();
-    rebadgeAll(ctx);
+    const idx = S.selectedIds.indexOf(id);
+    if (idx === -1) {
+      S.selectedIds.push(id);
+      card.classList.add("selected");
+      card.insertAdjacentHTML("beforeend",
+        `<div class="px-seq-badge">${S.selectedIds.length}</div>`);
+    } else {
+      S.selectedIds.splice(idx, 1);
+      card.classList.remove("selected");
+      card.querySelector(".px-seq-badge")?.remove();
+      rebadgeAll(ctx);
+    }
   }
   updateCount(ctx);
   commitSelection(ctx);

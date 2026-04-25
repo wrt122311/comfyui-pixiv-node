@@ -62,6 +62,18 @@
   font-size: 12px;
 }
 
+.px-multisel-btn {
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid #45475a;
+  color: #7f849c;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.px-multisel-btn:hover { color: #cba6f7; border-color: #cba6f7; }
+.px-multisel-btn.active { color: #cba6f7; border-color: #cba6f7; background: #313244; }
+
 .px-clear-btn {
   padding: 4px 9px;
   background: transparent;
