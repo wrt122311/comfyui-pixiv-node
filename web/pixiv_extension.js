@@ -3,6 +3,11 @@ import { app } from "../../scripts/app.js";
 // ── Global illust cache (shared across all node instances) ────────────────────
 const illustCache = new Map();
 
+// ── Persistent tab data cache (survives node recreation on workflow switch) ───
+// key: "recommended" | "bookmarks" | "ranking:day" | "ranking:week" | …
+// value: { illusts: IllustObject[], nextUrl: string|null }
+const persistedTabData = new Map();
+
 // ── CSS injection ─────────────────────────────────────────────────────────────
 function injectCSS() {
   if (document.getElementById("pixiv-node-css")) return;
@@ -342,13 +347,20 @@ function renderRecommendedPane(ctx) {
     </div>
   `;
   contentEl.querySelector(".px-refresh-btn").addEventListener("click", () => {
+    persistedTabData.delete("recommended");
     delete S.cachedPanes["recommended"];
     S.nextUrls["recommended"] = undefined;
     renderRecommendedPane(ctx);
   });
-  S.nextUrls["recommended"] = undefined;
   S.masonryCols["recommended"] = setupMasonry(contentEl.querySelector(".px-grid"));
-  loadMoreImages(ctx, "recommended");
+  const recCached = persistedTabData.get("recommended");
+  if (recCached?.illusts.length) {
+    S.nextUrls["recommended"] = recCached.nextUrl;
+    for (const illust of recCached.illusts) masonryAdd(S.masonryCols["recommended"], createCard(ctx, illust));
+  } else {
+    S.nextUrls["recommended"] = undefined;
+    loadMoreImages(ctx, "recommended");
+  }
   setupInfiniteScroll(ctx, "recommended");
 }
 
@@ -370,13 +382,20 @@ function renderBookmarksPane(ctx) {
     </div>
   `;
   contentEl.querySelector(".px-refresh-btn").addEventListener("click", () => {
+    persistedTabData.delete("bookmarks");
     delete S.cachedPanes["bookmarks"];
     S.nextUrls["bookmarks"] = undefined;
     renderBookmarksPane(ctx);
   });
-  S.nextUrls["bookmarks"] = undefined;
   S.masonryCols["bookmarks"] = setupMasonry(contentEl.querySelector(".px-grid"));
-  loadMoreImages(ctx, "bookmarks");
+  const bmCached = persistedTabData.get("bookmarks");
+  if (bmCached?.illusts.length) {
+    S.nextUrls["bookmarks"] = bmCached.nextUrl;
+    for (const illust of bmCached.illusts) masonryAdd(S.masonryCols["bookmarks"], createCard(ctx, illust));
+  } else {
+    S.nextUrls["bookmarks"] = undefined;
+    loadMoreImages(ctx, "bookmarks");
+  }
   setupInfiniteScroll(ctx, "bookmarks");
 }
 
@@ -410,26 +429,35 @@ function renderRankingPane(ctx) {
       </div>
     </div>
   `;
+  const restoreRanking = (mode) => {
+    const grid = contentEl.querySelector(".px-grid");
+    if (grid) S.masonryCols["ranking"] = setupMasonry(grid);
+    const rkCached = persistedTabData.get(`ranking:${mode}`);
+    if (rkCached?.illusts.length) {
+      S.nextUrls["ranking"] = rkCached.nextUrl;
+      for (const illust of rkCached.illusts) masonryAdd(S.masonryCols["ranking"], createCard(ctx, illust));
+    } else {
+      S.nextUrls["ranking"] = undefined;
+      loadMoreImages(ctx, "ranking");
+    }
+  };
+
   contentEl.querySelectorAll(".px-rank-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       if (S.rankingMode === btn.dataset.mode) return;
       S.rankingMode = btn.dataset.mode;
-      S.nextUrls["ranking"] = undefined;
       contentEl.querySelectorAll(".px-rank-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      const grid = contentEl.querySelector(".px-grid");
-      if (grid) S.masonryCols["ranking"] = setupMasonry(grid);
-      loadMoreImages(ctx, "ranking");
+      restoreRanking(S.rankingMode);
     });
   });
   contentEl.querySelector(".px-refresh-btn").addEventListener("click", () => {
+    persistedTabData.delete(`ranking:${S.rankingMode}`);
     delete S.cachedPanes["ranking"];
     S.nextUrls["ranking"] = undefined;
     renderRankingPane(ctx);
   });
-  S.nextUrls["ranking"] = undefined;
-  S.masonryCols["ranking"] = setupMasonry(contentEl.querySelector(".px-grid"));
-  loadMoreImages(ctx, "ranking");
+  restoreRanking(S.rankingMode);
   setupInfiniteScroll(ctx, "ranking");
 }
 
@@ -466,6 +494,14 @@ async function loadMoreImages(ctx, tab) {
     const data = await fetchImages(tab, nextUrl, S);
     if (S.activeTab !== tab) return;
     S.nextUrls[tab] = data.next_url ?? null;
+
+    // Persist fetched illusts so node recreation doesn't re-fetch
+    const cacheKey = tab === "ranking" ? `ranking:${S.rankingMode}` : tab;
+    if (!persistedTabData.has(cacheKey)) persistedTabData.set(cacheKey, { illusts: [], nextUrl: null });
+    const ce = persistedTabData.get(cacheKey);
+    ce.illusts.push(...data.illusts);
+    ce.nextUrl = S.nextUrls[tab];
+
     const cols   = S.masonryCols[tab];
     const gridEl = contentEl.querySelector(".px-grid");
     for (const illust of data.illusts) {
