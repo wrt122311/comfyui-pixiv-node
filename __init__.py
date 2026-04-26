@@ -17,9 +17,10 @@ try:
 
     @routes.get("/pixiv/status")
     async def pixiv_status(request):
-        logged_in = _client_instance._logged_in
+        # Consider logged-in if we have a saved token — actual auth happens lazily on first API call
+        logged_in = _client_instance._logged_in or bool(_config.get_refresh_token())
         username = ""
-        if logged_in:
+        if _client_instance._logged_in:
             try:
                 username = str(_client_instance.api.user_id)
             except Exception:
