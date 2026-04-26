@@ -495,12 +495,11 @@ async function loadMoreImages(ctx, tab) {
     if (S.activeTab !== tab) return;
     S.nextUrls[tab] = data.next_url ?? null;
 
-    // Persist fetched illusts so node recreation doesn't re-fetch
+    // Persist first page only — keeps restoration cost low (~30 cards)
     const cacheKey = tab === "ranking" ? `ranking:${S.rankingMode}` : tab;
-    if (!persistedTabData.has(cacheKey)) persistedTabData.set(cacheKey, { illusts: [], nextUrl: null });
-    const ce = persistedTabData.get(cacheKey);
-    ce.illusts.push(...data.illusts);
-    ce.nextUrl = S.nextUrls[tab];
+    if (!persistedTabData.has(cacheKey)) {
+      persistedTabData.set(cacheKey, { illusts: data.illusts, nextUrl: S.nextUrls[tab] });
+    }
 
     const cols   = S.masonryCols[tab];
     const gridEl = contentEl.querySelector(".px-grid");
