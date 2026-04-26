@@ -49,6 +49,67 @@ function masonryAdd(cols, el) {
   cols[idx].appendChild(el);
 }
 
+// ── Custom scrollbar ──────────────────────────────────────────────────────────
+function attachCustomScrollbar(scrollEl) {
+  if (!scrollEl || !scrollEl.parentNode) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "px-scroll-wrap";
+  scrollEl.parentNode.insertBefore(wrap, scrollEl);
+  wrap.appendChild(scrollEl);
+
+  const bar = document.createElement("div");
+  bar.className = "px-scrollbar";
+  const thumb = document.createElement("div");
+  thumb.className = "px-scrollbar-thumb";
+  bar.appendChild(thumb);
+  wrap.appendChild(bar);
+
+  function updateThumb() {
+    const viewH = scrollEl.clientHeight;
+    const totalH = scrollEl.scrollHeight;
+    if (totalH <= viewH + 1) { bar.style.visibility = "hidden"; return; }
+    bar.style.visibility = "";
+    const barH = bar.clientHeight;
+    const thumbH = Math.max(24, barH * viewH / totalH);
+    const top = (scrollEl.scrollTop / (totalH - viewH)) * (barH - thumbH);
+    thumb.style.height = thumbH + "px";
+    thumb.style.top = top + "px";
+  }
+
+  scrollEl.addEventListener("scroll", updateThumb, { passive: true });
+  new ResizeObserver(updateThumb).observe(scrollEl);
+
+  bar.addEventListener("click", (e) => {
+    if (e.target === thumb) return;
+    const rect = bar.getBoundingClientRect();
+    scrollEl.scrollTop = ((e.clientY - rect.top) / bar.clientHeight) * (scrollEl.scrollHeight - scrollEl.clientHeight);
+  });
+
+  thumb.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startTop = scrollEl.scrollTop;
+    const barH = bar.clientHeight;
+    const thumbH = thumb.offsetHeight;
+    thumb.classList.add("dragging");
+    const onMove = (ev) => {
+      const scrollRange = scrollEl.scrollHeight - scrollEl.clientHeight;
+      scrollEl.scrollTop = startTop + (ev.clientY - startY) * scrollRange / (barH - thumbH);
+    };
+    const onUp = () => {
+      thumb.classList.remove("dragging");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+
+  updateThumb();
+}
+
 // ── Per-node browser init ─────────────────────────────────────────────────────
 // ctx = { container, contentEl, idsWidget, S }
 
@@ -362,6 +423,7 @@ function renderRecommendedPane(ctx) {
     loadMoreImages(ctx, "recommended");
   }
   setupInfiniteScroll(ctx, "recommended");
+  attachCustomScrollbar(contentEl.querySelector(".px-grid-pane"));
 }
 
 // ── Bookmarks pane ────────────────────────────────────────────────────────────
@@ -397,6 +459,7 @@ function renderBookmarksPane(ctx) {
     loadMoreImages(ctx, "bookmarks");
   }
   setupInfiniteScroll(ctx, "bookmarks");
+  attachCustomScrollbar(contentEl.querySelector(".px-grid-pane"));
 }
 
 // ── Ranking pane ──────────────────────────────────────────────────────────────
@@ -459,6 +522,7 @@ function renderRankingPane(ctx) {
   });
   restoreRanking(S.rankingMode);
   setupInfiniteScroll(ctx, "ranking");
+  attachCustomScrollbar(contentEl.querySelector(".px-grid-pane"));
 }
 
 // ── Image fetch + load ────────────────────────────────────────────────────────
@@ -799,6 +863,7 @@ async function loadArtistWorks(ctx, artistId, artistInfo = null) {
   }
   await loadMoreArtistWorks(ctx, artistId);
   setupArtistInfiniteScroll(ctx, artistId);
+  attachCustomScrollbar(worksPane.querySelector(".px-artist-grid-scroll"));
 }
 
 async function loadMoreArtistWorks(ctx, artistId) {
@@ -930,6 +995,7 @@ function renderSearchPane(ctx) {
         loadSearchResults(ctx);
       }
     }, { passive: true });
+    attachCustomScrollbar(pane);
   }
 }
 
