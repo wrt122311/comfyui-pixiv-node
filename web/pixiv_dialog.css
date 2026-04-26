@@ -106,7 +106,7 @@
 }
 
 .px-scrollbar {
-  width: 6px;
+  width: 12px;
   background: #181825;
   position: relative;
   cursor: pointer;
@@ -116,10 +116,10 @@
 
 .px-scrollbar-thumb {
   position: absolute;
-  left: 1px;
-  right: 1px;
+  left: 2px;
+  right: 2px;
   background: #45475a;
-  border-radius: 3px;
+  border-radius: 4px;
   min-height: 24px;
   cursor: grab;
   transition: background 0.15s;
