@@ -651,6 +651,18 @@ function createCard(ctx, illust) {
   });
   card.appendChild(artistBtn);
 
+  // Pixiv link button
+  const pixivBtn = document.createElement("a");
+  pixivBtn.className = "px-pixiv-btn";
+  pixivBtn.textContent = "P";
+  pixivBtn.title = "在 Pixiv 上查看";
+  pixivBtn.href = `https://www.pixiv.net/artworks/${id}`;
+  pixivBtn.target = "_blank";
+  pixivBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+  card.appendChild(pixivBtn);
+
   const idx = S.selectedIds.indexOf(id);
   if (idx !== -1) {
     card.classList.add("selected");
